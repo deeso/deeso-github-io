@@ -1,0 +1,503 @@
+<?xml version="1.0" encoding="utf-8"?>
+<feed xmlns="http://www.w3.org/2005/Atom"><title>dsocon</title><link href="http://dsocon.thecoverofnight.com/" rel="alternate"></link><link href="http://dsocon.thecoverofnight.com/feeds/all.atom.xml" rel="self"></link><id>http://dsocon.thecoverofnight.com/</id><updated>2013-04-09T00:00:00-05:00</updated><entry><title>Introduction to Radare Java Reverse Engineering</title><link href="http://dsocon.thecoverofnight.com/posts/2013/04/radare-java-intro/" rel="alternate"></link><updated>2013-04-09T00:00:00-05:00</updated><author><name>Adam Pridgen</name></author><id>tag:dsocon.thecoverofnight.com,2013-04-09:posts/2013/04/radare-java-intro/</id><summary type="html">&lt;h2&gt;0. Introduction&lt;/h2&gt;
+&lt;p&gt;Radare is a reverse engineering framework that was built to support a command line hacker's needs. The frame work supports a number of different architectures and binary formats, which range from esoteric languages like BrainFuck to more common binary formats like MS-DOS Portable Executables (PE) or the Executable Linker Format (ELF).  In the past Radare has had limited support for Java reverse engineering, but this support provided only a minimal amount of information like disassembly, symbols, and import information.  The Java support has recently been updated and set of new features were added to Radare to help facilitate the analysis of Java class and Java Archive (JAR) file formats.&lt;/p&gt;
+&lt;p&gt;The focus of this post is to introduce some of these new features in addition to providing a basic walk-through for using Radare as a reverse engineering tool againt a ZIP archive and Java class files.  Typically, Java can be decompiled using tools like JD-GUI, JAD, JODE, CFR, etc., but these tools run into limitations when they are used against malicious or intentionally obfuscated code.  The purpose of these Radare extensions is to give malware analysts and reverse engineers a set of tools that can be used  to analyze Java based malware.  &lt;/p&gt;
+&lt;p&gt;In general, Java malware is fairly easy to identify and classify based on the code, import libraries, and the methods used by those imports, but when an analyst is asked to enumerate the functionality or explain what it does, they could be left in the dark.  Before the commencement of this project, there were a limited set of tools and those tools were typically written in Java.  Its not to say tools written in Java are less effective, but rather these tools take advantage of implicit assumptions that are implicit if the code comes from a considerate compiler and is not obfuscated.&lt;/p&gt;
+&lt;p&gt;For example, I found that that the &lt;strong&gt;SYNTHETIC&lt;/strong&gt; flags or attributes in methods, fields, or classes code or other artifacts could be used to hide artifacts from an analyst.  This particular case arises because the &lt;strong&gt;SYNTHETIC&lt;/strong&gt; attribute is used to indicate compiler generated code, and a decompiler or other analysis tool might assume this is an artifact is only for a compiler.  In the case of JD-GUI, if a method is marked with the &lt;strong&gt;SYNTHETIC&lt;/strong&gt; flag, the code will not be decompiled and displayed to the user.  This means that a smart malware author could conceal functionality in plain sight.  CFR actually decompiled this and presented it to the user.  This was verified by setting the &lt;strong&gt;SYNTHETIC&lt;/strong&gt; flags on a method in a Java class file, and then then the method was decompiled with both JD-GUI and CFR.&lt;/p&gt;
+&lt;p&gt;The remainder of this post will provide a basic introduction to Radare, and the coming days there will be some additional posts about the Java extensions and how they can be used to help analyze Java malware.  The first two sections will talk about setting up the environment.  The remainder of the post will focus on how to enumerate, analyse, and extract files from a ZIP archives.  The last section will discuss how to move data from files to archives and archive files to disk with the yank command.&lt;/p&gt;
+&lt;h2&gt;1. Getting started&lt;/h2&gt;
+&lt;p&gt;Radare can be compiled from source, or if you want to use a clean environment, you can set up a docker image.  If you get radare from source, it can be retrieved from github.  If you want to go the docker route, simply install Docker and perform the following commands:&lt;/p&gt;
+&lt;p&gt;Initialize the Docker and run r2:&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span class="err"&gt;$&lt;/span&gt; &lt;span class="n"&gt;cat&lt;/span&gt; &lt;span class="n"&gt;radare2&lt;/span&gt;&lt;span class="p"&gt;.&lt;/span&gt;&lt;span class="n"&gt;docker&lt;/span&gt; &lt;span class="o"&gt;&amp;gt;&lt;/span&gt; &lt;span class="n"&gt;Dockerfile&lt;/span&gt;
+&lt;span class="err"&gt;$&lt;/span&gt; &lt;span class="n"&gt;docker&lt;/span&gt; &lt;span class="n"&gt;build&lt;/span&gt; &lt;span class="o"&gt;-&lt;/span&gt;&lt;span class="n"&gt;t&lt;/span&gt; &lt;span class="n"&gt;r2&lt;/span&gt;&lt;span class="o"&gt;/&lt;/span&gt;&lt;span class="n"&gt;radare2&lt;/span&gt; &lt;span class="p"&gt;.&lt;/span&gt;
+&lt;span class="err"&gt;$&lt;/span&gt; &lt;span class="n"&gt;docker&lt;/span&gt; &lt;span class="n"&gt;run&lt;/span&gt; &lt;span class="o"&gt;-&lt;/span&gt;&lt;span class="n"&gt;t&lt;/span&gt;  &lt;span class="o"&gt;-&lt;/span&gt;&lt;span class="n"&gt;i&lt;/span&gt; &lt;span class="n"&gt;r2&lt;/span&gt;&lt;span class="o"&gt;/&lt;/span&gt;&lt;span class="n"&gt;radare2&lt;/span&gt;  &lt;span class="o"&gt;/&lt;/span&gt;&lt;span class="n"&gt;bin&lt;/span&gt;&lt;span class="o"&gt;/&lt;/span&gt;&lt;span class="n"&gt;bash&lt;/span&gt;
+&lt;/pre&gt;&lt;/div&gt;
+
+
+&lt;p&gt;radare2.docker:&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span class="cp"&gt;# using phusion/baseimage as base image. &lt;/span&gt;
+&lt;span class="n"&gt;FROM&lt;/span&gt; &lt;span class="n"&gt;phusion&lt;/span&gt;&lt;span class="o"&gt;/&lt;/span&gt;&lt;span class="n"&gt;baseimage&lt;/span&gt;&lt;span class="o"&gt;:&lt;/span&gt;&lt;span class="mf"&gt;0.9.9&lt;/span&gt;
+
+&lt;span class="cp"&gt;# Set correct environment variables.&lt;/span&gt;
+&lt;span class="n"&gt;ENV&lt;/span&gt; &lt;span class="n"&gt;HOME&lt;/span&gt; &lt;span class="o"&gt;/&lt;/span&gt;&lt;span class="n"&gt;root&lt;/span&gt;
+
+&lt;span class="cp"&gt;# Regenerate SSH host keys. baseimage-docker does not contain any&lt;/span&gt;
+&lt;span class="n"&gt;RUN&lt;/span&gt; &lt;span class="o"&gt;/&lt;/span&gt;&lt;span class="n"&gt;etc&lt;/span&gt;&lt;span class="o"&gt;/&lt;/span&gt;&lt;span class="n"&gt;my_init&lt;/span&gt;&lt;span class="p"&gt;.&lt;/span&gt;&lt;span class="n"&gt;d&lt;/span&gt;&lt;span class="o"&gt;/&lt;/span&gt;&lt;span class="mo"&gt;00&lt;/span&gt;&lt;span class="n"&gt;_regen_ssh_host_keys&lt;/span&gt;&lt;span class="p"&gt;.&lt;/span&gt;&lt;span class="n"&gt;sh&lt;/span&gt;
+
+&lt;span class="cp"&gt;# Use baseimage-docker&amp;#39;s init system.&lt;/span&gt;
+&lt;span class="n"&gt;CMD&lt;/span&gt; &lt;span class="p"&gt;[&lt;/span&gt;&lt;span class="s"&gt;&amp;quot;/sbin/my_init&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;]&lt;/span&gt;
+
+&lt;span class="cp"&gt;# create code directory&lt;/span&gt;
+&lt;span class="n"&gt;RUN&lt;/span&gt; &lt;span class="n"&gt;mkdir&lt;/span&gt; &lt;span class="o"&gt;/&lt;/span&gt;&lt;span class="n"&gt;opt&lt;/span&gt;&lt;span class="o"&gt;/&lt;/span&gt;&lt;span class="n"&gt;code&lt;/span&gt;&lt;span class="o"&gt;/&lt;/span&gt;
+&lt;span class="cp"&gt;# install packages required to compile vala and radare2&lt;/span&gt;
+&lt;span class="n"&gt;RUN&lt;/span&gt; &lt;span class="n"&gt;apt&lt;/span&gt;&lt;span class="o"&gt;-&lt;/span&gt;&lt;span class="n"&gt;get&lt;/span&gt; &lt;span class="n"&gt;update&lt;/span&gt;
+&lt;span class="n"&gt;RUN&lt;/span&gt; &lt;span class="n"&gt;apt&lt;/span&gt;&lt;span class="o"&gt;-&lt;/span&gt;&lt;span class="n"&gt;get&lt;/span&gt; &lt;span class="n"&gt;install&lt;/span&gt; &lt;span class="o"&gt;-&lt;/span&gt;&lt;span class="n"&gt;y&lt;/span&gt; &lt;span class="n"&gt;software&lt;/span&gt;&lt;span class="o"&gt;-&lt;/span&gt;&lt;span class="n"&gt;properties&lt;/span&gt;&lt;span class="o"&gt;-&lt;/span&gt;&lt;span class="n"&gt;common&lt;/span&gt; &lt;span class="n"&gt;python&lt;/span&gt;&lt;span class="o"&gt;-&lt;/span&gt;&lt;span class="n"&gt;all&lt;/span&gt;&lt;span class="o"&gt;-&lt;/span&gt;&lt;span class="n"&gt;dev&lt;/span&gt; &lt;span class="n"&gt;wget&lt;/span&gt;
+&lt;span class="n"&gt;RUN&lt;/span&gt; &lt;span class="n"&gt;apt&lt;/span&gt;&lt;span class="o"&gt;-&lt;/span&gt;&lt;span class="n"&gt;get&lt;/span&gt; &lt;span class="n"&gt;install&lt;/span&gt; &lt;span class="o"&gt;-&lt;/span&gt;&lt;span class="n"&gt;y&lt;/span&gt; &lt;span class="n"&gt;swig&lt;/span&gt; &lt;span class="n"&gt;flex&lt;/span&gt; &lt;span class="n"&gt;bison&lt;/span&gt; &lt;span class="n"&gt;git&lt;/span&gt; &lt;span class="n"&gt;gcc&lt;/span&gt; &lt;span class="n"&gt;g&lt;/span&gt;&lt;span class="o"&gt;++&lt;/span&gt; &lt;span class="n"&gt;make&lt;/span&gt; &lt;span class="n"&gt;pkg&lt;/span&gt;&lt;span class="o"&gt;-&lt;/span&gt;&lt;span class="n"&gt;config&lt;/span&gt; &lt;span class="n"&gt;glib&lt;/span&gt;&lt;span class="o"&gt;-&lt;/span&gt;&lt;span class="mf"&gt;2.0&lt;/span&gt;
+&lt;span class="n"&gt;RUN&lt;/span&gt; &lt;span class="n"&gt;apt&lt;/span&gt;&lt;span class="o"&gt;-&lt;/span&gt;&lt;span class="n"&gt;get&lt;/span&gt; &lt;span class="n"&gt;install&lt;/span&gt; &lt;span class="o"&gt;-&lt;/span&gt;&lt;span class="n"&gt;y&lt;/span&gt; &lt;span class="n"&gt;python&lt;/span&gt;&lt;span class="o"&gt;-&lt;/span&gt;&lt;span class="n"&gt;gobject&lt;/span&gt;&lt;span class="o"&gt;-&lt;/span&gt;&lt;span class="n"&gt;dev&lt;/span&gt;
+
+&lt;span class="cp"&gt;# compile vala&lt;/span&gt;
+&lt;span class="n"&gt;RUN&lt;/span&gt; &lt;span class="n"&gt;cd&lt;/span&gt; &lt;span class="o"&gt;/&lt;/span&gt;&lt;span class="n"&gt;opt&lt;/span&gt;&lt;span class="o"&gt;/&lt;/span&gt;&lt;span class="n"&gt;code&lt;/span&gt;&lt;span class="p"&gt;;&lt;/span&gt; &lt;span class="n"&gt;wget&lt;/span&gt; &lt;span class="n"&gt;http&lt;/span&gt;&lt;span class="o"&gt;:&lt;/span&gt;&lt;span class="c1"&gt;//download.gnome.org/sources/vala/0.24/vala-0.24.0.tar.xz; tar -Jxf vala-0.24.0.tar.xz&lt;/span&gt;
+&lt;span class="n"&gt;RUN&lt;/span&gt; &lt;span class="n"&gt;cd&lt;/span&gt; &lt;span class="o"&gt;/&lt;/span&gt;&lt;span class="n"&gt;opt&lt;/span&gt;&lt;span class="o"&gt;/&lt;/span&gt;&lt;span class="n"&gt;code&lt;/span&gt;&lt;span class="o"&gt;/&lt;/span&gt;&lt;span class="n"&gt;vala&lt;/span&gt;&lt;span class="o"&gt;-&lt;/span&gt;&lt;span class="mf"&gt;0.24.0&lt;/span&gt;&lt;span class="p"&gt;;&lt;/span&gt; &lt;span class="p"&gt;.&lt;/span&gt;&lt;span class="o"&gt;/&lt;/span&gt;&lt;span class="n"&gt;configure&lt;/span&gt; &lt;span class="o"&gt;--&lt;/span&gt;&lt;span class="n"&gt;prefix&lt;/span&gt;&lt;span class="o"&gt;=/&lt;/span&gt;&lt;span class="n"&gt;usr&lt;/span&gt; &lt;span class="p"&gt;;&lt;/span&gt; &lt;span class="n"&gt;make&lt;/span&gt; &lt;span class="o"&gt;&amp;amp;&amp;amp;&lt;/span&gt; &lt;span class="n"&gt;make&lt;/span&gt; &lt;span class="n"&gt;install&lt;/span&gt;
+&lt;span class="cp"&gt;# compile radare&lt;/span&gt;
+&lt;span class="n"&gt;RUN&lt;/span&gt; &lt;span class="n"&gt;cd&lt;/span&gt; &lt;span class="o"&gt;/&lt;/span&gt;&lt;span class="n"&gt;opt&lt;/span&gt;&lt;span class="o"&gt;/&lt;/span&gt;&lt;span class="n"&gt;code&lt;/span&gt;&lt;span class="p"&gt;;&lt;/span&gt; &lt;span class="n"&gt;git&lt;/span&gt; &lt;span class="n"&gt;clone&lt;/span&gt; &lt;span class="n"&gt;https&lt;/span&gt;&lt;span class="o"&gt;:&lt;/span&gt;&lt;span class="c1"&gt;//github.com/radare/radare2.git; cd radare2; ./sys/all.sh&lt;/span&gt;
+
+&lt;span class="cp"&gt;# Clean up APT when done.&lt;/span&gt;
+&lt;span class="n"&gt;RUN&lt;/span&gt; &lt;span class="n"&gt;apt&lt;/span&gt;&lt;span class="o"&gt;-&lt;/span&gt;&lt;span class="n"&gt;get&lt;/span&gt; &lt;span class="n"&gt;clean&lt;/span&gt; &lt;span class="o"&gt;&amp;amp;&amp;amp;&lt;/span&gt; &lt;span class="n"&gt;rm&lt;/span&gt; &lt;span class="o"&gt;-&lt;/span&gt;&lt;span class="n"&gt;rf&lt;/span&gt; &lt;span class="o"&gt;/&lt;/span&gt;&lt;span class="n"&gt;var&lt;/span&gt;&lt;span class="o"&gt;/&lt;/span&gt;&lt;span class="n"&gt;lib&lt;/span&gt;&lt;span class="o"&gt;/&lt;/span&gt;&lt;span class="n"&gt;apt&lt;/span&gt;&lt;span class="o"&gt;/&lt;/span&gt;&lt;span class="n"&gt;lists&lt;/span&gt;&lt;span class="o"&gt;/*&lt;/span&gt; &lt;span class="o"&gt;/&lt;/span&gt;&lt;span class="n"&gt;tmp&lt;/span&gt;&lt;span class="o"&gt;/*&lt;/span&gt; &lt;span class="o"&gt;/&lt;/span&gt;&lt;span class="n"&gt;var&lt;/span&gt;&lt;span class="o"&gt;/&lt;/span&gt;&lt;span class="n"&gt;tmp&lt;/span&gt;&lt;span class="o"&gt;/*&lt;/span&gt;
+&lt;/pre&gt;&lt;/div&gt;
+
+
+&lt;h2&gt;2. Creating the example file&lt;/h2&gt;
+&lt;p&gt;Lets start by writing a new file to disk using a hexlified string.  The below example will open an empty file and then write all the bytes to example.zip.&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span class="err"&gt;$&lt;/span&gt; &lt;span class="nb"&gt;zip&lt;/span&gt; &lt;span class="nx"&gt;example.zip&lt;/span&gt; &lt;span class="nx"&gt;anypkg&lt;/span&gt;&lt;span class="p"&gt;/&lt;/span&gt;&lt;span class="nx"&gt;Attacker.class&lt;/span&gt; &lt;span class="nx"&gt;anypkg&lt;/span&gt;&lt;span class="p"&gt;/&lt;/span&gt;&lt;span class="nx"&gt;BlyahaMuha.class&lt;/span&gt;
+&lt;span class="err"&gt;$&lt;/span&gt; &lt;span class="nx"&gt;rax2&lt;/span&gt; &lt;span class="na"&gt;-S&lt;/span&gt; &lt;span class="o"&gt;&amp;lt;&lt;/span&gt; &lt;span class="nx"&gt;example.zip&lt;/span&gt; &lt;span class="o"&gt;&amp;gt;&lt;/span&gt; &lt;span class="kd"&gt;data&lt;/span&gt;&lt;span class="bp"&gt;.&lt;/span&gt;&lt;span class="nx"&gt;hex&lt;/span&gt;
+&lt;span class="err"&gt;$&lt;/span&gt; &lt;span class="nx"&gt;cat&lt;/span&gt; &lt;span class="kd"&gt;data&lt;/span&gt;&lt;span class="bp"&gt;.&lt;/span&gt;&lt;span class="nx"&gt;hex&lt;/span&gt;
+&lt;span class="mi"&gt;504&lt;/span&gt;&lt;span class="nx"&gt;b0304140000000800ce9a5242390493e76a05000&lt;/span&gt;&lt;span class="o"&gt;&amp;lt;&lt;/span&gt;&lt;span class="nx"&gt;truncated&lt;/span&gt;&lt;span class="o"&gt;&amp;gt;&lt;/span&gt;
+&lt;/pre&gt;&lt;/div&gt;
+
+
+&lt;p&gt;Open an empty archive and write a hexlified string with &lt;strong&gt;wx&lt;/strong&gt;:&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span class="err"&gt;$&lt;/span&gt; &lt;span class="n"&gt;r2&lt;/span&gt; &lt;span class="o"&gt;-&lt;/span&gt;&lt;span class="n"&gt;w&lt;/span&gt; &lt;span class="n"&gt;example&lt;/span&gt;&lt;span class="p"&gt;.&lt;/span&gt;&lt;span class="n"&gt;zip&lt;/span&gt;
+&lt;span class="p"&gt;[&lt;/span&gt;&lt;span class="mh"&gt;0x00000000&lt;/span&gt;&lt;span class="p"&gt;]&lt;/span&gt;&lt;span class="o"&gt;&amp;gt;&lt;/span&gt; &lt;span class="n"&gt;wx&lt;/span&gt; &lt;span class="mi"&gt;504&lt;/span&gt;&lt;span class="n"&gt;b0304140000000800ce9a5242390493e76a050000e009000015001c00616e79706b672f41747461636b65722e636c6173735554090003d4d32251d4d3225175780b000104e803000004e80300007d555b77135514fe4e9276d2617a4be90d5a28a0a51724220a42b1a62d548a498b04a8a52a4e93d376e83413261368f0ae88f7cb3fd0e50bafa06b059728cb677f892f3eeb722dc4ef4cd234a585ac9533e7ecb3bf7df9f6de337ffcf7cb3d0007f1ad8ebd9856cbab61cce8e8c5853a2eb31a5ed3518be920c48defd5ee750d6fd4a0f44bebb8883735983ab6634e4707521ac61538ad4186311fc642188b3a7a6069b8a4e188d259d260eb58464683a3a31bd36164355c0ec3d590d3b11b9e92e6d57245c3550d2b02fa45dbcc79a74dd75c1688c42f9957cca86d6616a249cfb5320b4302b5c7ac8ce50d0b04fbfacf0b84c69cb414688c5b1939995f9e93ee5973ce960aeca44cfbbce95aea5c1686bc452b27d01c373385ecd24274c4f3ccd492746937a4cc0a086ab556f93db1929259cf7232541116ff1302018b4a3d554a13194fba6e3eebc9f43a7d8751cece8e729712685a759a288c3999f90215ea93ca7dc2ccfae1b104e49c2c0b8453ae343d995021f7f52b0b0115773930cba1c76cde2327d25c56b1f399263573f9f979e952d9473844ecac20460b9e1c715db33095f7d6b03eef0eeb41ea2ba1e7341404b405c942788b025bfbfa37ab4468d9b432026d7db31b6ffdd298ee02edb66c72cd0c8fa5ec7221f5a493775372dc5215aa5f2dc97e053230804103073048736999f30c5cc35b06fad02fd0b09e4f036fe31dbadba4761ade35f01ede17d8f1f8a219f8001f1af808d70dc430c2be2afb883bb65d18b3994e5dda8925ccd882c5928a98000c7c8c1bd45cb33cc61ece19f8049fb2ea6be2a9b94b32e569f8ccc0e7f842a0fbb1a561b559803332e7c4143b23b1dcaabce9613a05daa32bd184b9246349673926c7f399fd29db8ce572ab74acef1803c7f1a581aff0b5816faab35ce59ed3e3c3cc6cd6965e74c47f54db9aaa302660f87dc281959e42f6f66dd20d9b75c0966bce94edd84e6e51cddd4035cc2730ee98694e667ffca1120cad63e0ec62a9f76b72b69459352ea754ef8519946f8551afeb5e5f48130dab0a2537029d1bd5ca1170145c99b5cd14dbf3f8ba30174d37292fe7652625871e25df34f73a7a4f486fd161e4b14d089bdd1071b51957cedbeca468c902cd753cea8eef042b73c55962e447aadd945a719d9bb2a87fa388f9f7cd8e4e4cf4f3d55773d5b53c599190e92d9e53e95fece227612f3f182c809a51ee6ab9e70c73ddc753944f8e0c6a06ee40dce62680a7ca4a808efd50e3e42b50f569dfd08155b098a55e88b26b04070622c122423fa1e62e6a67ee408b075fe88a847f40cba028a26efa264293d703e2e683bfb662cbcfa8e7393138504463114dea3ef41b9a6782341449265ad012d91a698db415d14e79c74cb0059dc922b6099eb6cf04f771dfa52c266e23c88fd51e26a933ee833884061c461e2b3c07fd4cc6d1ccb5817136a21e4d68450b11adc47410d546725aa8d745ec4ea2bb89eec518a553a42bcf9b15665b200f8a8993d07c329fa17610ed443f8be7c8d861ca0e710d10d58be77184bb42592fa0f82973d70a89a318227bc778ea46f83eda35bc2026350ce35fd49cd4f022fe464c1d09e4fb8eab22ba91d5539f7eeb2ebac9ed8eb820471d919d0f71d4a338529c96688aec2adf2bba7ec7ee84aa417318bf868f86f67586829da17b45ec99190e7c8786419ebb8b78e2e6833f078b78f21663d419c54885c7dd0c01ac7d9839e9cc7a98198f32d309e633c37cd20c577134cc9e18ad70a4e3024f634ce31cf93f4e5c9088ed38c1baa8ceb1cacc8461e225f25b62a607a107741dd430a1e1948697211425f7695a43f33fd88638b542d44ea00e9364bdd4cc5d7ea7f2e647d4dcf27b75ad974f50f3345e296b0efab7d8d8f227ab5a5ee00c927e70672bf3b2a3eca236d2c656bffd909331aee77c8be7ff07504b0304140000000800c09652428402cdc2600100004102000017001c00616e79706b672f426c796168614d7568612e636c617373555409000328cd225128cd225175780b000104e803000004e80300006d50bb4ec340109c4b9c38ef276f41814491a4c005258882082a079082d29f8de5737cd891ed80f257010a240a4a0a3e0ab1761c0529296e67ef6e6676b43fbf9f5f00ce705082829d22b2d855b1a7629fe1c8365eac40b8d2366c23a0eacad0104e206c290c97a1a9736f36716d4df7a59cf56578ce90bf703c27ba64c876ba2306a5ef3f5a0c75ddf1acdbe99361050fdc90f4d2d27d93cb110f9cf89e3e2a91704286f6d2f74aceb8e083a9e0e45c0eade8de09457c184e3a6bc3bb1be2e464dc3354871137dd019fa493caf67fb3766793b634f4a78169dd38b1a0beca723ae6cfbc0215850a72c8d31ed6e23234629226b9676b77c6d832231cd36a155a3519c732eab2d4930bd522dd34424698eb7d80bd5293212288c8126a996a654120ac121651433d155fa7e252ef1b6aef1d19364f54b1438d103448a1510562af9c4a6824419a8b30f1670bedd4f230a100ca1b32f334f7324e8dea561271fb0f504b01021e03140000000800ce9a5242390493e76a050000e0090000150018000000000000000000a48100000000616e79706b672f41747461636b65722e636c6173735554050003d4d3225175780b000104e803000004e8030000504b01021e03140000000800c09652428402cdc26001000041020000170018000000000000000000a481b9050000616e79706b672f426c796168614d7568612e636c617373555405000328cd225175780b000104e803000004e8030000504b05060000000002000200b80000006a0700000000&lt;/span&gt;
+&lt;span class="p"&gt;[&lt;/span&gt;&lt;span class="mh"&gt;0x00000000&lt;/span&gt;&lt;span class="p"&gt;]&lt;/span&gt;&lt;span class="o"&gt;&amp;gt;&lt;/span&gt; &lt;span class="n"&gt;q&lt;/span&gt;
+&lt;/pre&gt;&lt;/div&gt;
+
+
+&lt;h2&gt;3. Enumerating Files in the Zip&lt;/h2&gt;
+&lt;p&gt;List the files in the example by opening the archive with the "&lt;strong&gt;zip://&lt;/strong&gt;" uri.&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span class="err"&gt;$&lt;/span&gt; &lt;span class="n"&gt;r2&lt;/span&gt; &lt;span class="n"&gt;zip&lt;/span&gt;&lt;span class="o"&gt;:&lt;/span&gt;&lt;span class="c1"&gt;//example.zip&lt;/span&gt;
+&lt;span class="mi"&gt;0&lt;/span&gt; &lt;span class="n"&gt;anypkg&lt;/span&gt;&lt;span class="o"&gt;/&lt;/span&gt;&lt;span class="n"&gt;Attacker&lt;/span&gt;&lt;span class="p"&gt;.&lt;/span&gt;&lt;span class="n"&gt;class&lt;/span&gt;
+&lt;span class="mi"&gt;1&lt;/span&gt; &lt;span class="n"&gt;anypkg&lt;/span&gt;&lt;span class="o"&gt;/&lt;/span&gt;&lt;span class="n"&gt;BlyahaMuha&lt;/span&gt;&lt;span class="p"&gt;.&lt;/span&gt;&lt;span class="n"&gt;class&lt;/span&gt;
+&lt;/pre&gt;&lt;/div&gt;
+
+
+&lt;p&gt;Opening by index:&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span class="err"&gt;$&lt;/span&gt; &lt;span class="n"&gt;r2&lt;/span&gt; &lt;span class="n"&gt;zip&lt;/span&gt;&lt;span class="o"&gt;:&lt;/span&gt;&lt;span class="c1"&gt;//example.zip::0&lt;/span&gt;
+&lt;span class="p"&gt;[&lt;/span&gt;&lt;span class="mh"&gt;0x00000690&lt;/span&gt;&lt;span class="p"&gt;]&lt;/span&gt;&lt;span class="o"&gt;&amp;gt;&lt;/span&gt;
+&lt;/pre&gt;&lt;/div&gt;
+
+
+&lt;p&gt;Opening by path:&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span class="err"&gt;$&lt;/span&gt; &lt;span class="n"&gt;r2&lt;/span&gt; &lt;span class="n"&gt;zip&lt;/span&gt;&lt;span class="o"&gt;:&lt;/span&gt;&lt;span class="c1"&gt;//example.zip//anypkg/Attacker.class&lt;/span&gt;
+&lt;span class="p"&gt;[&lt;/span&gt;&lt;span class="mh"&gt;0x00000690&lt;/span&gt;&lt;span class="p"&gt;]&lt;/span&gt;&lt;span class="o"&gt;&amp;gt;&lt;/span&gt;
+&lt;/pre&gt;&lt;/div&gt;
+
+
+&lt;h2&gt;4. Enumerating Java Class File Information&lt;/h2&gt;
+&lt;p&gt;Radare provides some really good informational commands that are typically used for the basic file information, if the developer implements them.  For Java, a large number of the basic information is implemented.&lt;/p&gt;
+&lt;ol&gt;
+&lt;li&gt;&lt;strong&gt;if&lt;/strong&gt; or &lt;strong&gt;ijf&lt;/strong&gt;: list the the information related to the class file in standard or JSON output&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;ii&lt;/strong&gt; or &lt;strong&gt;iji&lt;/strong&gt;: list the imported classes methods and fields used in the class file&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;il&lt;/strong&gt; or &lt;strong&gt;ijl&lt;/strong&gt;: list all of classes/libraries used by the class file&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;ic&lt;/strong&gt; or &lt;strong&gt;ijc&lt;/strong&gt;: list the class hierarchy for the current class file&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;iz&lt;/strong&gt; or &lt;strong&gt;ijZ&lt;/strong&gt;: list the all the strings in the class file&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;iS&lt;/strong&gt; or &lt;strong&gt;ijS&lt;/strong&gt;: show where where the CP array, fields array, methods array, and attributes array begins.&lt;/li&gt;
+&lt;/ol&gt;
+&lt;p&gt;Radare Java analysis contains several different features that will be covered in the future.  In general, the extension commands can be run with "&lt;strong&gt;java &amp;lt;&lt;em&gt;command&lt;/em&gt;&amp;gt;&lt;/strong&gt;" like "&lt;strong&gt;java resolve_cp d&lt;/strong&gt;".  The "&lt;strong&gt;resolve_cp&lt;/strong&gt;" command is used to resolve or identify Constant Pool objects in the class file by their index.  Below the &lt;strong&gt;java resolve_cp d&lt;/strong&gt; will dump all the CP objects in the class file.&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span class="cp"&gt;[&lt;/span&gt;&lt;span class="mh"&gt;0x00000690&lt;/span&gt;&lt;span class="cp"&gt;]&lt;/span&gt;&amp;gt; java resolve_cp d
+MethodRef ConstantPool Type (1)         Offset: 0x0000000a      Class Index = 39
+        Name and type Index = 87
+MethodRef ConstantPool Type (2)         Offset: 0x0000000f      Class Index = 39
+        Name and type Index = 88
+String ConstantPool Type (3)    Offset: 0x00000014      String Index = 89
+MethodRef ConstantPool Type (4)         Offset: 0x00000017      Class Index = 38
+        Name and type Index = 90
+FieldRef ConstantPool Type (5)  Offset: 0x0000001c      Class Index = 38
+        Name and type Index = 91
+ClassRef ConstantPool Type (6)  Offset: 0x00000021      Name Index = 92
+MethodRef ConstantPool Type (7)         Offset: 0x00000024      Class Index = 6
+&lt;span class="nt"&gt;&amp;lt;snip&amp;gt;&lt;/span&gt;
+&lt;/pre&gt;&lt;/div&gt;
+
+
+&lt;p&gt;For more information on the extensions, checkout "java help".  Note some of the commands will not work if analysis is not performed.  Before discussing the code analysis, lets briefly cover some additional information that is provided when Radare reports the class files's sections and symbols.  JVM class files are very good about separating code and data while including alot of meta-information that can be used for reversing or modifying the class file without lifting it back to source (e.g. decompiling).  In the symbols list (e.g. is), the descriptor notes whether a field or method are &lt;strong&gt;FUNC&lt;/strong&gt;, &lt;strong&gt;FUNC_META&lt;/strong&gt;, &lt;strong&gt;FIELD&lt;/strong&gt;, or &lt;strong&gt;FIELD_META&lt;/strong&gt;.  In these cases, the &lt;strong&gt;*_META&lt;/strong&gt; points to the start of the meta-information, and &lt;strong&gt;FUNC&lt;/strong&gt; will point to the actual code.  In the case of &lt;strong&gt;FIELD&lt;/strong&gt; and &lt;strong&gt;FIELD_META&lt;/strong&gt;, they will point to the same location because the &lt;strong&gt;FIELD&lt;/strong&gt; is used to more or less to hold values, which only exist if the value is a constant.&lt;/p&gt;
+&lt;p&gt;Below shows the output of the &lt;strong&gt;is&lt;/strong&gt;, which will output the symbol information for the class file.&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span class="p"&gt;[&lt;/span&gt;&lt;span class="mh"&gt;0x00000690&lt;/span&gt;&lt;span class="p"&gt;]&lt;/span&gt;&lt;span class="o"&gt;&amp;gt;&lt;/span&gt; &lt;span class="n"&gt;is&lt;/span&gt;
+&lt;span class="p"&gt;[&lt;/span&gt;&lt;span class="n"&gt;Symbols&lt;/span&gt;&lt;span class="p"&gt;]&lt;/span&gt;
+&lt;span class="n"&gt;addr&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="mh"&gt;0x00000690&lt;/span&gt; &lt;span class="n"&gt;off&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="mh"&gt;0x00000690&lt;/span&gt; &lt;span class="n"&gt;ord&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="mo"&gt;000&lt;/span&gt; &lt;span class="n"&gt;fwd&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="n"&gt;NONE&lt;/span&gt; &lt;span class="n"&gt;sz&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="mi"&gt;5&lt;/span&gt; &lt;span class="n"&gt;bind&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt; &lt;span class="n"&gt;type&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="n"&gt;FUNC&lt;/span&gt; &lt;span class="n"&gt;name&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="n"&gt;_init_&lt;/span&gt;
+&lt;span class="n"&gt;addr&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="mh"&gt;0x0000067a&lt;/span&gt; &lt;span class="n"&gt;off&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="mh"&gt;0x0000067a&lt;/span&gt; &lt;span class="n"&gt;ord&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="mo"&gt;000&lt;/span&gt; &lt;span class="n"&gt;fwd&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="n"&gt;NONE&lt;/span&gt; &lt;span class="n"&gt;sz&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="mi"&gt;61&lt;/span&gt; &lt;span class="n"&gt;bind&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="n"&gt;java&lt;/span&gt;&lt;span class="o"&gt;/&lt;/span&gt;&lt;span class="n"&gt;applet&lt;/span&gt;&lt;span class="o"&gt;/&lt;/span&gt;&lt;span class="n"&gt;Applet&lt;/span&gt; &lt;span class="n"&gt;type&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="n"&gt;FUNC_META&lt;/span&gt; &lt;span class="n"&gt;name&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="n"&gt;mmeta__init_&lt;/span&gt;
+&lt;span class="n"&gt;addr&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="mh"&gt;0x000006cd&lt;/span&gt; &lt;span class="n"&gt;off&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="mh"&gt;0x000006cd&lt;/span&gt; &lt;span class="n"&gt;ord&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="mo"&gt;001&lt;/span&gt; &lt;span class="n"&gt;fwd&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="n"&gt;NONE&lt;/span&gt; &lt;span class="n"&gt;sz&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="mi"&gt;122&lt;/span&gt; &lt;span class="n"&gt;bind&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt; &lt;span class="n"&gt;type&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="n"&gt;FUNC&lt;/span&gt; &lt;span class="n"&gt;name&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="n"&gt;init&lt;/span&gt;
+&lt;span class="n"&gt;addr&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="mh"&gt;0x000006b7&lt;/span&gt; &lt;span class="n"&gt;off&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="mh"&gt;0x000006b7&lt;/span&gt; &lt;span class="n"&gt;ord&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="mo"&gt;001&lt;/span&gt; &lt;span class="n"&gt;fwd&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="n"&gt;NONE&lt;/span&gt; &lt;span class="n"&gt;sz&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="mi"&gt;361&lt;/span&gt; &lt;span class="n"&gt;bind&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="n"&gt;java&lt;/span&gt;&lt;span class="o"&gt;/&lt;/span&gt;&lt;span class="n"&gt;applet&lt;/span&gt;&lt;span class="o"&gt;/&lt;/span&gt;&lt;span class="n"&gt;Applet&lt;/span&gt; &lt;span class="n"&gt;type&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="n"&gt;FUNC_META&lt;/span&gt; &lt;span class="n"&gt;name&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="n"&gt;mmeta_init&lt;/span&gt;
+&lt;span class="n"&gt;addr&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="mh"&gt;0x00000836&lt;/span&gt; &lt;span class="n"&gt;off&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="mh"&gt;0x00000836&lt;/span&gt; &lt;span class="n"&gt;ord&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="mo"&gt;002&lt;/span&gt; &lt;span class="n"&gt;fwd&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="n"&gt;NONE&lt;/span&gt; &lt;span class="n"&gt;sz&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="mi"&gt;105&lt;/span&gt; &lt;span class="n"&gt;bind&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="n"&gt;LOCAL&lt;/span&gt; &lt;span class="n"&gt;type&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="n"&gt;FUNC&lt;/span&gt; &lt;span class="n"&gt;name&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="n"&gt;createMe&lt;/span&gt;
+&lt;span class="n"&gt;addr&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="mh"&gt;0x00000820&lt;/span&gt; &lt;span class="n"&gt;off&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="mh"&gt;0x00000820&lt;/span&gt; &lt;span class="n"&gt;ord&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="mo"&gt;002&lt;/span&gt; &lt;span class="n"&gt;fwd&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="n"&gt;NONE&lt;/span&gt; &lt;span class="n"&gt;sz&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="mi"&gt;295&lt;/span&gt; &lt;span class="n"&gt;bind&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="n"&gt;anypkg&lt;/span&gt;&lt;span class="o"&gt;/&lt;/span&gt;&lt;span class="n"&gt;Attacker&lt;/span&gt; &lt;span class="n"&gt;type&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="n"&gt;FUNC_META&lt;/span&gt; &lt;span class="n"&gt;name&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="n"&gt;mmeta_createMe&lt;/span&gt;
+&lt;span class="n"&gt;addr&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="mh"&gt;0x0000095d&lt;/span&gt; &lt;span class="n"&gt;off&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="mh"&gt;0x0000095d&lt;/span&gt; &lt;span class="n"&gt;ord&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="mo"&gt;003&lt;/span&gt; &lt;span class="n"&gt;fwd&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="n"&gt;NONE&lt;/span&gt; &lt;span class="n"&gt;sz&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="mi"&gt;4&lt;/span&gt; &lt;span class="n"&gt;bind&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt; &lt;span class="n"&gt;type&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="n"&gt;FUNC&lt;/span&gt; &lt;span class="n"&gt;name&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="n"&gt;getPath&lt;/span&gt;
+&lt;span class="n"&gt;addr&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="mh"&gt;0x00000947&lt;/span&gt; &lt;span class="n"&gt;off&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="mh"&gt;0x00000947&lt;/span&gt; &lt;span class="n"&gt;ord&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="mo"&gt;003&lt;/span&gt; &lt;span class="n"&gt;fwd&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="n"&gt;NONE&lt;/span&gt; &lt;span class="n"&gt;sz&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="mi"&gt;42&lt;/span&gt; &lt;span class="n"&gt;bind&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="n"&gt;anypkg&lt;/span&gt;&lt;span class="o"&gt;/&lt;/span&gt;&lt;span class="n"&gt;Attacker&lt;/span&gt; &lt;span class="n"&gt;type&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="n"&gt;FUNC_META&lt;/span&gt; &lt;span class="n"&gt;name&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="n"&gt;mmeta_getPath&lt;/span&gt;
+&lt;span class="n"&gt;addr&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="mh"&gt;0x00000987&lt;/span&gt; &lt;span class="n"&gt;off&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="mh"&gt;0x00000987&lt;/span&gt; &lt;span class="n"&gt;ord&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="mo"&gt;004&lt;/span&gt; &lt;span class="n"&gt;fwd&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="n"&gt;NONE&lt;/span&gt; &lt;span class="n"&gt;sz&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="mi"&gt;1&lt;/span&gt; &lt;span class="n"&gt;bind&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt; &lt;span class="n"&gt;type&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="n"&gt;FUNC&lt;/span&gt; &lt;span class="n"&gt;name&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="n"&gt;main&lt;/span&gt;
+&lt;span class="n"&gt;addr&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="mh"&gt;0x00000971&lt;/span&gt; &lt;span class="n"&gt;off&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="mh"&gt;0x00000971&lt;/span&gt; &lt;span class="n"&gt;ord&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="mo"&gt;004&lt;/span&gt; &lt;span class="n"&gt;fwd&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="n"&gt;NONE&lt;/span&gt; &lt;span class="n"&gt;sz&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="mi"&gt;57&lt;/span&gt; &lt;span class="n"&gt;bind&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="n"&gt;anypkg&lt;/span&gt;&lt;span class="o"&gt;/&lt;/span&gt;&lt;span class="n"&gt;Attacker&lt;/span&gt; &lt;span class="n"&gt;type&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="n"&gt;FUNC_META&lt;/span&gt; &lt;span class="n"&gt;name&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="n"&gt;mmeta_main&lt;/span&gt;
+&lt;span class="n"&gt;addr&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="mh"&gt;0x000009c0&lt;/span&gt; &lt;span class="n"&gt;off&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="mh"&gt;0x000009c0&lt;/span&gt; &lt;span class="n"&gt;ord&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="mo"&gt;005&lt;/span&gt; &lt;span class="n"&gt;fwd&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="n"&gt;NONE&lt;/span&gt; &lt;span class="n"&gt;sz&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="mi"&gt;6&lt;/span&gt; &lt;span class="n"&gt;bind&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt; &lt;span class="n"&gt;type&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="n"&gt;FUNC&lt;/span&gt; &lt;span class="n"&gt;name&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="n"&gt;_clinit_&lt;/span&gt;
+&lt;span class="n"&gt;addr&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="mh"&gt;0x000009aa&lt;/span&gt; &lt;span class="n"&gt;off&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="mh"&gt;0x000009aa&lt;/span&gt; &lt;span class="n"&gt;ord&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="mo"&gt;005&lt;/span&gt; &lt;span class="n"&gt;fwd&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="n"&gt;NONE&lt;/span&gt; &lt;span class="n"&gt;sz&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="mi"&gt;44&lt;/span&gt; &lt;span class="n"&gt;bind&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="n"&gt;anypkg&lt;/span&gt;&lt;span class="o"&gt;/&lt;/span&gt;&lt;span class="n"&gt;Attacker&lt;/span&gt; &lt;span class="n"&gt;type&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="n"&gt;FUNC_META&lt;/span&gt; &lt;span class="n"&gt;name&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="n"&gt;mmeta__clinit_&lt;/span&gt;
+&lt;span class="n"&gt;addr&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="mh"&gt;0x00000670&lt;/span&gt; &lt;span class="n"&gt;off&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="mh"&gt;0x00000670&lt;/span&gt; &lt;span class="n"&gt;ord&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="mo"&gt;000&lt;/span&gt; &lt;span class="n"&gt;fwd&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="n"&gt;NONE&lt;/span&gt; &lt;span class="n"&gt;sz&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="mi"&gt;8&lt;/span&gt; &lt;span class="n"&gt;bind&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt; &lt;span class="n"&gt;type&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="n"&gt;FIELD&lt;/span&gt; &lt;span class="n"&gt;name&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="n"&gt;_lastParam&lt;/span&gt;
+&lt;span class="n"&gt;addr&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="mh"&gt;0x00000670&lt;/span&gt; &lt;span class="n"&gt;off&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="mh"&gt;0x00000670&lt;/span&gt; &lt;span class="n"&gt;ord&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="mo"&gt;000&lt;/span&gt; &lt;span class="n"&gt;fwd&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="n"&gt;NONE&lt;/span&gt; &lt;span class="n"&gt;sz&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="mi"&gt;8&lt;/span&gt; &lt;span class="n"&gt;bind&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="n"&gt;anypkg&lt;/span&gt;&lt;span class="o"&gt;/&lt;/span&gt;&lt;span class="n"&gt;Attacker&lt;/span&gt; &lt;span class="n"&gt;type&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="n"&gt;FIELD_META&lt;/span&gt; &lt;span class="n"&gt;name&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="n"&gt;mmeta__lastParam&lt;/span&gt;
+
+&lt;span class="mi"&gt;14&lt;/span&gt; &lt;span class="n"&gt;symbols&lt;/span&gt;
+&lt;/pre&gt;&lt;/div&gt;
+
+
+&lt;p&gt;In the case of the sections, the sections of the file are broken down in the following manner:&lt;/p&gt;
+&lt;ol&gt;
+&lt;li&gt;&lt;strong&gt;constant_pool:&lt;/strong&gt; Constant Pool Section (see JVM/class file spec.)&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;fields:&lt;/strong&gt; Start of the Actual Fields Array, (see JVM/class file spec.)&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;attrs.&amp;lt;&lt;em&gt;field_name&lt;/em&gt;&amp;gt;:&lt;/strong&gt; Start of the attributes array for the given field, (see JVM/class file spec.)&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;methods:&lt;/strong&gt; Start of the Actual Methods Array, (see JVM/class file spec.)&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;attrs.&amp;lt;&lt;em&gt;method_name&lt;/em&gt;&amp;gt;:&lt;/strong&gt; Start of the attributes array for the given method, (see JVM/class file spec.)&lt;/li&gt;
+&lt;/ol&gt;
+&lt;p&gt;Below are the sections reported by the &lt;strong&gt;iS&lt;/strong&gt; command.  Note that the &lt;strong&gt;attr._lastParam&lt;/strong&gt; in the &lt;strong&gt;iS&lt;/strong&gt; does not have a corresponding section, because there is no attribute array for this field.&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span class="p"&gt;[&lt;/span&gt;&lt;span class="mh"&gt;0x00000690&lt;/span&gt;&lt;span class="p"&gt;]&lt;/span&gt;&lt;span class="o"&gt;&amp;gt;&lt;/span&gt; &lt;span class="n"&gt;iS&lt;/span&gt;
+&lt;span class="p"&gt;[&lt;/span&gt;&lt;span class="n"&gt;Sections&lt;/span&gt;&lt;span class="p"&gt;]&lt;/span&gt;
+&lt;span class="n"&gt;idx&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="mo"&gt;00&lt;/span&gt; &lt;span class="n"&gt;addr&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="mh"&gt;0x0000066c&lt;/span&gt; &lt;span class="n"&gt;off&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="mh"&gt;0x0000066c&lt;/span&gt; &lt;span class="n"&gt;sz&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="mi"&gt;1630&lt;/span&gt; &lt;span class="n"&gt;vsz&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="mi"&gt;0&lt;/span&gt; &lt;span class="n"&gt;perm&lt;/span&gt;&lt;span class="o"&gt;=----&lt;/span&gt; &lt;span class="n"&gt;name&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="n"&gt;constant_pool&lt;/span&gt;
+&lt;span class="n"&gt;idx&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="mo"&gt;01&lt;/span&gt; &lt;span class="n"&gt;addr&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="mh"&gt;0x0000066e&lt;/span&gt; &lt;span class="n"&gt;off&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="mh"&gt;0x0000066e&lt;/span&gt; &lt;span class="n"&gt;sz&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="mi"&gt;10&lt;/span&gt; &lt;span class="n"&gt;vsz&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="mi"&gt;0&lt;/span&gt; &lt;span class="n"&gt;perm&lt;/span&gt;&lt;span class="o"&gt;=----&lt;/span&gt; &lt;span class="n"&gt;name&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="n"&gt;fields&lt;/span&gt;
+&lt;span class="n"&gt;idx&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="mo"&gt;02&lt;/span&gt; &lt;span class="n"&gt;addr&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="mh"&gt;0x00000678&lt;/span&gt; &lt;span class="n"&gt;off&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="mh"&gt;0x00000678&lt;/span&gt; &lt;span class="n"&gt;sz&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="mi"&gt;862&lt;/span&gt; &lt;span class="n"&gt;vsz&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="mi"&gt;0&lt;/span&gt; &lt;span class="n"&gt;perm&lt;/span&gt;&lt;span class="o"&gt;=----&lt;/span&gt; &lt;span class="n"&gt;name&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="n"&gt;methods&lt;/span&gt;
+&lt;span class="n"&gt;idx&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="mo"&gt;03&lt;/span&gt; &lt;span class="n"&gt;addr&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="mh"&gt;0x00000682&lt;/span&gt; &lt;span class="n"&gt;off&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="mh"&gt;0x00000682&lt;/span&gt; &lt;span class="n"&gt;sz&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="mi"&gt;69&lt;/span&gt; &lt;span class="n"&gt;vsz&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="mi"&gt;0&lt;/span&gt; &lt;span class="n"&gt;perm&lt;/span&gt;&lt;span class="o"&gt;=----&lt;/span&gt; &lt;span class="n"&gt;name&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="n"&gt;attrs&lt;/span&gt;&lt;span class="p"&gt;.&lt;/span&gt;&lt;span class="n"&gt;_init_&lt;/span&gt;
+&lt;span class="n"&gt;idx&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="mo"&gt;04&lt;/span&gt; &lt;span class="n"&gt;addr&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="mh"&gt;0x000006bf&lt;/span&gt; &lt;span class="n"&gt;off&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="mh"&gt;0x000006bf&lt;/span&gt; &lt;span class="n"&gt;sz&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="mi"&gt;369&lt;/span&gt; &lt;span class="n"&gt;vsz&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="mi"&gt;0&lt;/span&gt; &lt;span class="n"&gt;perm&lt;/span&gt;&lt;span class="o"&gt;=----&lt;/span&gt; &lt;span class="n"&gt;name&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="n"&gt;attrs&lt;/span&gt;&lt;span class="p"&gt;.&lt;/span&gt;&lt;span class="n"&gt;init&lt;/span&gt;
+&lt;span class="n"&gt;idx&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="mo"&gt;05&lt;/span&gt; &lt;span class="n"&gt;addr&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="mh"&gt;0x00000828&lt;/span&gt; &lt;span class="n"&gt;off&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="mh"&gt;0x00000828&lt;/span&gt; &lt;span class="n"&gt;sz&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="mi"&gt;303&lt;/span&gt; &lt;span class="n"&gt;vsz&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="mi"&gt;0&lt;/span&gt; &lt;span class="n"&gt;perm&lt;/span&gt;&lt;span class="o"&gt;=----&lt;/span&gt; &lt;span class="n"&gt;name&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="n"&gt;attrs&lt;/span&gt;&lt;span class="p"&gt;.&lt;/span&gt;&lt;span class="n"&gt;createMe&lt;/span&gt;
+&lt;span class="n"&gt;idx&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="mo"&gt;06&lt;/span&gt; &lt;span class="n"&gt;addr&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="mh"&gt;0x0000094f&lt;/span&gt; &lt;span class="n"&gt;off&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="mh"&gt;0x0000094f&lt;/span&gt; &lt;span class="n"&gt;sz&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="mi"&gt;50&lt;/span&gt; &lt;span class="n"&gt;vsz&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="mi"&gt;0&lt;/span&gt; &lt;span class="n"&gt;perm&lt;/span&gt;&lt;span class="o"&gt;=----&lt;/span&gt; &lt;span class="n"&gt;name&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="n"&gt;attrs&lt;/span&gt;&lt;span class="p"&gt;.&lt;/span&gt;&lt;span class="n"&gt;getPath&lt;/span&gt;
+&lt;span class="n"&gt;idx&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="mo"&gt;07&lt;/span&gt; &lt;span class="n"&gt;addr&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="mh"&gt;0x00000979&lt;/span&gt; &lt;span class="n"&gt;off&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="mh"&gt;0x00000979&lt;/span&gt; &lt;span class="n"&gt;sz&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="mi"&gt;65&lt;/span&gt; &lt;span class="n"&gt;vsz&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="mi"&gt;0&lt;/span&gt; &lt;span class="n"&gt;perm&lt;/span&gt;&lt;span class="o"&gt;=----&lt;/span&gt; &lt;span class="n"&gt;name&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="n"&gt;attrs&lt;/span&gt;&lt;span class="p"&gt;.&lt;/span&gt;&lt;span class="n"&gt;main&lt;/span&gt;
+&lt;span class="n"&gt;idx&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="mi"&gt;08&lt;/span&gt; &lt;span class="n"&gt;addr&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="mh"&gt;0x000009b2&lt;/span&gt; &lt;span class="n"&gt;off&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="mh"&gt;0x000009b2&lt;/span&gt; &lt;span class="n"&gt;sz&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="mi"&gt;52&lt;/span&gt; &lt;span class="n"&gt;vsz&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="mi"&gt;0&lt;/span&gt; &lt;span class="n"&gt;perm&lt;/span&gt;&lt;span class="o"&gt;=----&lt;/span&gt; &lt;span class="n"&gt;name&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="n"&gt;attrs&lt;/span&gt;&lt;span class="p"&gt;.&lt;/span&gt;&lt;span class="n"&gt;_clinit_&lt;/span&gt;
+&lt;span class="n"&gt;idx&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="mi"&gt;09&lt;/span&gt; &lt;span class="n"&gt;addr&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="mh"&gt;0x000009d6&lt;/span&gt; &lt;span class="n"&gt;off&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="mh"&gt;0x000009d6&lt;/span&gt; &lt;span class="n"&gt;sz&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="mi"&gt;10&lt;/span&gt; &lt;span class="n"&gt;vsz&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="mi"&gt;0&lt;/span&gt; &lt;span class="n"&gt;perm&lt;/span&gt;&lt;span class="o"&gt;=----&lt;/span&gt; &lt;span class="n"&gt;name&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="n"&gt;attributes&lt;/span&gt;
+
+&lt;span class="mi"&gt;10&lt;/span&gt; &lt;span class="n"&gt;sections&lt;/span&gt;
+&lt;/pre&gt;&lt;/div&gt;
+
+
+&lt;h2&gt;5. Yanking Around Files&lt;/h2&gt;
+&lt;p&gt;Some other neat features that were added to Radare as part of this project improved the file yanking capability.  Yanking, as the name implies, is the copying and pasting of bytes into a buffer or file.  This feature is enhanced by allowing files to yanked into or out of an archive.  For example, if an analyst is reversing a Java application, they might want to inject a class file into the archive or extract only a single file from the archive.  This means if a firmware images could also be manipulated in this manner, if the archive is implemented in the IO layer of Radare.&lt;/p&gt;
+&lt;p&gt;Examples below will demonstrate how to yank a file from an archive, print the disassembly, and then write the file to disk.  Another example will show how to yank code out of a Java function, and then paste this code into a file for further analysis.  A third example will show a file being added from the file system into the ZIP archive.&lt;/p&gt;
+&lt;p&gt;Before the demonstration, here is a quick summary of the commands used here:&lt;/p&gt;
+&lt;ol&gt;
+&lt;li&gt;&lt;strong&gt;yfa:&lt;/strong&gt; yank the entire file into the yank buffer using the IO layer to retrieve the file&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;yx:&lt;/strong&gt; print the yanked buffer as hex shown with the offset, the hexlified-bytes, and then the bytes themselves.&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;yy:&lt;/strong&gt; paste the yank buffer to the given address or current location&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;y:&lt;/strong&gt; print a summary of the yank buffer&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;wen:&lt;/strong&gt; extend the buffer by N-bytes null bytes from the current position&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;!ls -al:&lt;/strong&gt; perform the shell command "&lt;strong&gt;ls -al&lt;/strong&gt;"&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;? x- y:&lt;/strong&gt; perform the binary operation x-y and show the result&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;wt &lt;em&gt;[filename]&lt;/em&gt;:&lt;/strong&gt; write the buffer to disk&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;o- &lt;em&gt;[number]&lt;/em&gt;:&lt;/strong&gt; close the file&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;o+ &lt;em&gt;[filename]&lt;/em&gt;:&lt;/strong&gt; open a file for write mode&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;ib:&lt;/strong&gt; reload the bin from the buffer&lt;/li&gt;
+&lt;/ol&gt;
+&lt;h3&gt;Yank the File from Buffer and Write to Disk&lt;/h3&gt;
+&lt;p&gt;Below is an example of opening Radare with a small (512 bytes) memory backed buffer.  This buffer will need to be resized with "&lt;strong&gt;wen&lt;/strong&gt;" to accommodate the data from the target file, &lt;strong&gt;anypkg/Attacker.class&lt;/strong&gt;, in the archive.  Then "&lt;strong&gt;yy&lt;/strong&gt;' is used to paste the bytes,  and the "&lt;strong&gt;ib&lt;/strong&gt;" (info buffer) command is used to reload the buffer to detect type of content and load it as a Java class file.  This class file will then be saved to disk with "&lt;strong&gt;wt&lt;/strong&gt;".&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span class="err"&gt;$&lt;/span&gt; &lt;span class="nx"&gt;r2&lt;/span&gt; &lt;span class="nb"&gt;zip&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;&lt;span class="c1"&gt;//example.zip&lt;/span&gt;
+&lt;span class="n"&gt;Files&lt;/span&gt; &lt;span class="k"&gt;in&lt;/span&gt; &lt;span class="nb"&gt;archive&lt;/span&gt;
+&lt;span class="mi"&gt;0&lt;/span&gt; &lt;span class="nx"&gt;anypkg&lt;/span&gt;&lt;span class="p"&gt;/&lt;/span&gt;&lt;span class="nx"&gt;Attacker.class&lt;/span&gt;
+&lt;span class="mi"&gt;1&lt;/span&gt; &lt;span class="nx"&gt;anypkg&lt;/span&gt;&lt;span class="p"&gt;/&lt;/span&gt;&lt;span class="nx"&gt;BlyahaMuha.class&lt;/span&gt;
+
+&lt;span class="err"&gt;$&lt;/span&gt; &lt;span class="nx"&gt;r2&lt;/span&gt; &lt;span class="o"&gt;-&lt;/span&gt;
+&lt;span class="err"&gt;[&lt;/span&gt;&lt;span class="mh"&gt;0x00000000&lt;/span&gt;&lt;span class="cp"&gt;]&lt;/span&gt;&amp;gt; yfa zip://example.zip::0; yx
+- offset -   0 1  2 3  4 5  6 7  8 9  A B  C D  E F  0123456789ABCDEF
+0x00000000  cafe babe 0000 0033 0090 0a00 2700 570a  .......3....&amp;#39;.W.
+0x00000010  0027 0058 0800 590a 0026 005a 0900 2600  .&amp;#39;.X..Y..&lt;span class="err"&gt;&amp;amp;&lt;/span&gt;.Z..&lt;span class="err"&gt;&amp;amp;&lt;/span&gt;.
+0x00000020  5b07 005c 0a00 0600 5703 0001 86a0 0a00  &lt;span class="cp"&gt;[&lt;/span&gt;&lt;span class="nx"&gt;..&lt;/span&gt;&lt;span class="o"&gt;\&lt;/span&gt;&lt;span class="nx"&gt;....W.......&lt;/span&gt;
+&lt;span class="mh"&gt;0x00000030&lt;/span&gt;  &lt;span class="mi"&gt;0600&lt;/span&gt; &lt;span class="mi"&gt;5&lt;/span&gt;&lt;span class="nx"&gt;d07&lt;/span&gt; &lt;span class="mi"&gt;005&lt;/span&gt;&lt;span class="nx"&gt;e&lt;/span&gt; &lt;span class="mi"&gt;0500&lt;/span&gt; &lt;span class="mi"&gt;0000&lt;/span&gt; &lt;span class="mi"&gt;0000&lt;/span&gt; &lt;span class="mi"&gt;0000&lt;/span&gt; &lt;span class="mi"&gt;640&lt;/span&gt;&lt;span class="nx"&gt;a&lt;/span&gt;  &lt;span class="nx"&gt;..&lt;/span&gt;&lt;span class="cp"&gt;]&lt;/span&gt;..^........d.
+0x00000040  005f 0060 0700 610a 001b 0062 0a00 1800  ._.`..a....b....
+0x00000050  6307 0046 0a00 2600 6407 0065 0800 6608  c..F..&lt;span class="err"&gt;&amp;amp;&lt;/span&gt;.d..e..f.
+0x00000060  0067 0800 680a 0020 0069 0700 6a07 0039  .g..h.. .i..j..9
+0x00000070  0a00 1800 6b07 006c 0a00 6d00 6e07 006f  ....k..l..m.n..o
+0x00000080  0a00 1d00 5708 0070 0700 7108 0072 0700  ....W..p..q..r..
+0x00000090  730a 0022 0074 0a00 1d00 750a 001d 0076  s..&amp;quot;.t....u....v
+0x000000a0  0700 7707 0078 0100 0a5f 6c61 7374 5061  ..w..x..._lastPa
+0x000000b0  7261 6d01 0012 4c6a 6176 612f 6c61 6e67  ram...Ljava/lang
+0x000000c0  2f53 7472 696e 673b 0100 063c 696e 6974  /String;...&lt;span class="nt"&gt;&amp;lt;init&lt;/span&gt;
+&lt;span class="err"&gt;&amp;lt;&lt;/span&gt;&lt;span class="na"&gt;snip&lt;/span&gt;&lt;span class="nt"&gt;&amp;gt;&lt;/span&gt;
+
+&lt;span class="cp"&gt;[&lt;/span&gt;&lt;span class="mh"&gt;0x00000000&lt;/span&gt;&lt;span class="cp"&gt;]&lt;/span&gt;&amp;gt; if
+file    malloc://512
+fd      2946784
+size    0x200
+mode    rw-
+block   0x100
+uri     malloc://512
+
+&lt;span class="cp"&gt;[&lt;/span&gt;&lt;span class="mh"&gt;0x00000000&lt;/span&gt;&lt;span class="cp"&gt;]&lt;/span&gt;&amp;gt; y
+0xffffffffffffffff 2528 cafebabe0000003300900a002700570a002700580800590a0026005a090026005b&lt;span class="nt"&gt;&amp;lt;truncated&amp;gt;&lt;/span&gt;
+
+&lt;span class="cp"&gt;[&lt;/span&gt;&lt;span class="mh"&gt;0x00000000&lt;/span&gt;&lt;span class="cp"&gt;]&lt;/span&gt;&amp;gt; ? 2528-0x200
+2016 0x7e0 03740 1.0K 0000:07e0 2016 11100000 2016.0 0.000000
+&lt;span class="cp"&gt;[&lt;/span&gt;&lt;span class="mh"&gt;0x00000000&lt;/span&gt;&lt;span class="cp"&gt;]&lt;/span&gt;&amp;gt; wen 2016; yy; ib
+&lt;span class="cp"&gt;[&lt;/span&gt;&lt;span class="mh"&gt;0x000009c0&lt;/span&gt;&lt;span class="cp"&gt;]&lt;/span&gt;&amp;gt; if
+file    malloc://512
+type    JAVA CLASS
+pic     false
+has_va  false
+root    classprint the disassembly
+class   0x3300 0x0000
+lang    java
+arch    java
+bits    32
+machine Java VM
+os      any
+subsys  any
+endian  little
+strip   false
+static  false
+linenum true
+lsyms   true
+relocs  false
+rpath   NONE
+type    JAVA CLASS
+os      any
+arch    Java VM
+bits    32
+endian  little
+file    malloc://512
+fd      2791744
+size    0x9e0
+mode    rw-
+block   0x100
+uri     malloc://512
+
+&lt;span class="cp"&gt;[&lt;/span&gt;&lt;span class="mh"&gt;0x000009c0&lt;/span&gt;&lt;span class="cp"&gt;]&lt;/span&gt;&amp;gt; s sym.anypkg_Attacker.createMe; af; pdf
+/ (fcn) sym.anypkg_Attacker.createMe 105
+|          0x00000836    bb001d       new java/io/ByteArrayOutputStream 
+|          0x00000839    59           dup
+|          0x0000083a    b7001e       invokespecial java/io/ByteArrayOutputStream/&lt;span class="nt"&gt;&amp;lt;init&amp;gt;&lt;/span&gt;()V
+|             0x00000000()
+|          0x0000083d    4c           astore_1
+|          0x0000083e    01           aconst_null
+|          0x0000083f    4d           astore_2
+|          0x00000840    130018       ldc_w java/lang/Classprint the disassembly
+|          0x00000843    121f         ldc &amp;quot;getReso@urceA@sStream&amp;quot;
+&lt;span class="nt"&gt;&amp;lt;snip&amp;gt;&lt;/span&gt;
+&lt;span class="cp"&gt;[&lt;/span&gt;&lt;span class="mh"&gt;0x00000836&lt;/span&gt;&lt;span class="cp"&gt;]&lt;/span&gt;&amp;gt; wt Attacker.class
+&lt;span class="cp"&gt;[&lt;/span&gt;&lt;span class="mh"&gt;0x00000836&lt;/span&gt;&lt;span class="cp"&gt;]&lt;/span&gt;&amp;gt; !ls -al
+total 4
+drwxrwxr-x 5 dso dso 4096 Apr  8 20:33 .
+drwxrwxr-x 6 dso dso 4096 Nov 21 19:33 ..
+-rw-r--r-- 1 dso dso  256 Apr  8 20:33 Attacker.class
+-rw-r--r-- 1 dso dso 2104 Apr  8 11:43 example.zip
+&lt;/pre&gt;&lt;/div&gt;
+
+
+&lt;h3&gt;Yank Some Code From the Archive and Paste to a File&lt;/h3&gt;
+&lt;p&gt;Below is an example of how to yank a method from a Java class file, and then paste it into a file for further analysis.  In this example, the &lt;strong&gt;Attacker.class&lt;/strong&gt; will be opened from the JAR file, and analysis will be performed so that we can yank out the &lt;em&gt;createMe&lt;/em&gt; method from this class.  Once the method is yanked, the class file will be closed and a new file &lt;strong&gt;createMe.method&lt;/strong&gt; will be written to the disk.  Then this file will be opened, and the architecture will be set to java.  Afterwards, the assembly will be printed.  This technique can be used to save off interesting code, but note, the CP object reference resolutions will not be extracted with the code.&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span class="err"&gt;$&lt;/span&gt; &lt;span class="n"&gt;r2&lt;/span&gt; &lt;span class="n"&gt;zip&lt;/span&gt;&lt;span class="o"&gt;:&lt;/span&gt;&lt;span class="c1"&gt;//example.zip//anypkg/Attacker.class&lt;/span&gt;
+&lt;span class="p"&gt;[&lt;/span&gt;&lt;span class="mh"&gt;0x00000690&lt;/span&gt;&lt;span class="p"&gt;]&lt;/span&gt;&lt;span class="o"&gt;&amp;gt;&lt;/span&gt; &lt;span class="n"&gt;af&lt;/span&gt;&lt;span class="p"&gt;;&lt;/span&gt; &lt;span class="n"&gt;s&lt;/span&gt; &lt;span class="n"&gt;sym&lt;/span&gt;&lt;span class="p"&gt;.&lt;/span&gt;&lt;span class="n"&gt;anypkg_Attacker&lt;/span&gt;&lt;span class="p"&gt;.&lt;/span&gt;&lt;span class="n"&gt;createMe&lt;/span&gt;&lt;span class="p"&gt;;&lt;/span&gt; &lt;span class="n"&gt;pdf&lt;/span&gt;
+&lt;span class="o"&gt;/&lt;/span&gt; &lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="n"&gt;fcn&lt;/span&gt;&lt;span class="p"&gt;)&lt;/span&gt; &lt;span class="n"&gt;sym&lt;/span&gt;&lt;span class="p"&gt;.&lt;/span&gt;&lt;span class="n"&gt;anypkg_Attacker&lt;/span&gt;&lt;span class="p"&gt;.&lt;/span&gt;&lt;span class="n"&gt;createMe&lt;/span&gt; &lt;span class="mi"&gt;105&lt;/span&gt;
+&lt;span class="o"&gt;|&lt;/span&gt;          &lt;span class="mh"&gt;0x00000836&lt;/span&gt;    &lt;span class="n"&gt;bb001d&lt;/span&gt;       &lt;span class="n"&gt;new&lt;/span&gt; &lt;span class="n"&gt;java&lt;/span&gt;&lt;span class="o"&gt;/&lt;/span&gt;&lt;span class="n"&gt;io&lt;/span&gt;&lt;span class="o"&gt;/&lt;/span&gt;&lt;span class="n"&gt;ByteArrayOutputStream&lt;/span&gt; 
+&lt;span class="o"&gt;|&lt;/span&gt;          &lt;span class="mh"&gt;0x00000839&lt;/span&gt;    &lt;span class="mi"&gt;59&lt;/span&gt;           &lt;span class="n"&gt;dup&lt;/span&gt;
+&lt;span class="o"&gt;|&lt;/span&gt;          &lt;span class="mh"&gt;0x0000083a&lt;/span&gt;    &lt;span class="n"&gt;b7001e&lt;/span&gt;       &lt;span class="n"&gt;invokespecial&lt;/span&gt; &lt;span class="n"&gt;java&lt;/span&gt;&lt;span class="o"&gt;/&lt;/span&gt;&lt;span class="n"&gt;io&lt;/span&gt;&lt;span class="o"&gt;/&lt;/span&gt;&lt;span class="n"&gt;ByteArrayOutputStream&lt;/span&gt;&lt;span class="o"&gt;/&amp;lt;&lt;/span&gt;&lt;span class="n"&gt;init&lt;/span&gt;&lt;span class="o"&gt;&amp;gt;&lt;/span&gt;&lt;span class="p"&gt;()&lt;/span&gt;&lt;span class="n"&gt;V&lt;/span&gt;
+&lt;span class="o"&gt;|&lt;/span&gt;             &lt;span class="mh"&gt;0x00000000&lt;/span&gt;&lt;span class="p"&gt;()&lt;/span&gt; &lt;span class="p"&gt;;&lt;/span&gt; &lt;span class="n"&gt;section&lt;/span&gt;&lt;span class="p"&gt;.&lt;/span&gt;&lt;span class="n"&gt;constant_pool&lt;/span&gt;
+&lt;span class="o"&gt;|&lt;/span&gt;          &lt;span class="mh"&gt;0x0000083d&lt;/span&gt;    &lt;span class="mi"&gt;4&lt;/span&gt;&lt;span class="n"&gt;c&lt;/span&gt;           &lt;span class="n"&gt;astore_1&lt;/span&gt;
+&lt;span class="o"&gt;|&lt;/span&gt;          &lt;span class="mh"&gt;0x0000083e&lt;/span&gt;    &lt;span class="mo"&gt;01&lt;/span&gt;           &lt;span class="n"&gt;aconst_null&lt;/span&gt;
+&lt;span class="o"&gt;|&lt;/span&gt;          &lt;span class="mh"&gt;0x0000083f&lt;/span&gt;    &lt;span class="mi"&gt;4&lt;/span&gt;&lt;span class="n"&gt;d&lt;/span&gt;           &lt;span class="n"&gt;astore_2&lt;/span&gt;
+&lt;span class="o"&gt;|&lt;/span&gt;          &lt;span class="mh"&gt;0x00000840&lt;/span&gt;    &lt;span class="mi"&gt;130018&lt;/span&gt;       &lt;span class="n"&gt;ldc_w&lt;/span&gt; &lt;span class="n"&gt;java&lt;/span&gt;&lt;span class="o"&gt;/&lt;/span&gt;&lt;span class="n"&gt;lang&lt;/span&gt;&lt;span class="o"&gt;/&lt;/span&gt;&lt;span class="kt"&gt;Class&lt;/span&gt;
+&lt;span class="o"&gt;|&lt;/span&gt;          &lt;span class="mh"&gt;0x00000843&lt;/span&gt;    &lt;span class="mf"&gt;121f&lt;/span&gt;         &lt;span class="n"&gt;ldc&lt;/span&gt; &lt;span class="s"&gt;&amp;quot;getReso@urceA@sStream&amp;quot;&lt;/span&gt;
+&lt;span class="o"&gt;|&lt;/span&gt;          &lt;span class="mh"&gt;0x00000845&lt;/span&gt;    &lt;span class="mi"&gt;1215&lt;/span&gt;         &lt;span class="n"&gt;ldc&lt;/span&gt; &lt;span class="s"&gt;&amp;quot;@&amp;quot;&lt;/span&gt;
+&lt;span class="o"&gt;|&lt;/span&gt;          &lt;span class="mh"&gt;0x00000847&lt;/span&gt;    &lt;span class="mi"&gt;1216&lt;/span&gt;         &lt;span class="n"&gt;ldc&lt;/span&gt; &lt;span class="s"&gt;&amp;quot;&amp;quot;&lt;/span&gt;
+&lt;span class="o"&gt;|&lt;/span&gt;          &lt;span class="mh"&gt;0x00000849&lt;/span&gt;    &lt;span class="n"&gt;b60017&lt;/span&gt;       &lt;span class="n"&gt;invokevirtual&lt;/span&gt; &lt;span class="n"&gt;java&lt;/span&gt;&lt;span class="o"&gt;/&lt;/span&gt;&lt;span class="n"&gt;lang&lt;/span&gt;&lt;span class="o"&gt;/&lt;/span&gt;&lt;span class="n"&gt;String&lt;/span&gt;&lt;span class="o"&gt;/&lt;/span&gt;&lt;span class="n"&gt;replace&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="n"&gt;Ljava&lt;/span&gt;&lt;span class="o"&gt;/&lt;/span&gt;&lt;span class="n"&gt;lang&lt;/span&gt;&lt;span class="o"&gt;/&lt;/span&gt;&lt;span class="n"&gt;CharSequence&lt;/span&gt;&lt;span class="p"&gt;;&lt;/span&gt;&lt;span class="n"&gt;Ljava&lt;/span&gt;&lt;span class="o"&gt;/&lt;/span&gt;&lt;span class="n"&gt;lang&lt;/span&gt;&lt;span class="o"&gt;/&lt;/span&gt;&lt;span class="n"&gt;CharSequence&lt;/span&gt;&lt;span class="p"&gt;;)&lt;/span&gt;&lt;span class="n"&gt;Ljava&lt;/span&gt;&lt;span class="o"&gt;/&lt;/span&gt;&lt;span class="n"&gt;lang&lt;/span&gt;&lt;span class="o"&gt;/&lt;/span&gt;&lt;span class="n"&gt;String&lt;/span&gt;&lt;span class="p"&gt;;&lt;/span&gt;
+&lt;span class="o"&gt;|&lt;/span&gt;             &lt;span class="mh"&gt;0x00000000&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="mh"&gt;0x0&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt; &lt;span class="mh"&gt;0x0&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt; &lt;span class="mh"&gt;0x0&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt; &lt;span class="mh"&gt;0x0&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt; &lt;span class="mh"&gt;0x0&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt; &lt;span class="mh"&gt;0x0&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt; &lt;span class="mh"&gt;0x0&lt;/span&gt;&lt;span class="p"&gt;)&lt;/span&gt; &lt;span class="p"&gt;;&lt;/span&gt; &lt;span class="n"&gt;section&lt;/span&gt;&lt;span class="p"&gt;.&lt;/span&gt;&lt;span class="n"&gt;constant_pool&lt;/span&gt;
+&lt;span class="o"&gt;|&lt;/span&gt;          &lt;span class="mh"&gt;0x0000084c&lt;/span&gt;    &lt;span class="mo"&gt;04&lt;/span&gt;           &lt;span class="n"&gt;iconst_1&lt;/span&gt;
+&lt;span class="o"&gt;|&lt;/span&gt;          &lt;span class="mh"&gt;0x0000084d&lt;/span&gt;    &lt;span class="n"&gt;bd0018&lt;/span&gt;       &lt;span class="n"&gt;anewarray&lt;/span&gt; &lt;span class="n"&gt;java&lt;/span&gt;&lt;span class="o"&gt;/&lt;/span&gt;&lt;span class="n"&gt;lang&lt;/span&gt;&lt;span class="o"&gt;/&lt;/span&gt;&lt;span class="kt"&gt;Class&lt;/span&gt; 
+&lt;span class="o"&gt;|&lt;/span&gt;          &lt;span class="mh"&gt;0x00000850&lt;/span&gt;    &lt;span class="mi"&gt;59&lt;/span&gt;           &lt;span class="n"&gt;dup&lt;/span&gt;
+&lt;span class="o"&gt;|&lt;/span&gt;          &lt;span class="mh"&gt;0x00000851&lt;/span&gt;    &lt;span class="mo"&gt;03&lt;/span&gt;           &lt;span class="n"&gt;iconst_0&lt;/span&gt;
+&lt;span class="o"&gt;|&lt;/span&gt;          &lt;span class="mh"&gt;0x00000852&lt;/span&gt;    &lt;span class="mi"&gt;130020&lt;/span&gt;       &lt;span class="n"&gt;ldc_w&lt;/span&gt; &lt;span class="n"&gt;java&lt;/span&gt;&lt;span class="o"&gt;/&lt;/span&gt;&lt;span class="n"&gt;lang&lt;/span&gt;&lt;span class="o"&gt;/&lt;/span&gt;&lt;span class="n"&gt;String&lt;/span&gt;
+&lt;span class="o"&gt;|&lt;/span&gt;          &lt;span class="mh"&gt;0x00000855&lt;/span&gt;    &lt;span class="mi"&gt;53&lt;/span&gt;           &lt;span class="n"&gt;aastore&lt;/span&gt;
+&lt;span class="o"&gt;|&lt;/span&gt;          &lt;span class="mh"&gt;0x00000856&lt;/span&gt;    &lt;span class="n"&gt;b6001a&lt;/span&gt;       &lt;span class="n"&gt;invokevirtual&lt;/span&gt; &lt;span class="n"&gt;java&lt;/span&gt;&lt;span class="o"&gt;/&lt;/span&gt;&lt;span class="n"&gt;lang&lt;/span&gt;&lt;span class="o"&gt;/&lt;/span&gt;&lt;span class="kt"&gt;Class&lt;/span&gt;&lt;span class="o"&gt;/&lt;/span&gt;&lt;span class="n"&gt;getMethod&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="n"&gt;Ljava&lt;/span&gt;&lt;span class="o"&gt;/&lt;/span&gt;&lt;span class="n"&gt;lang&lt;/span&gt;&lt;span class="o"&gt;/&lt;/span&gt;&lt;span class="n"&gt;String&lt;/span&gt;&lt;span class="p"&gt;;[&lt;/span&gt;&lt;span class="n"&gt;Ljava&lt;/span&gt;&lt;span class="o"&gt;/&lt;/span&gt;&lt;span class="n"&gt;lang&lt;/span&gt;&lt;span class="o"&gt;/&lt;/span&gt;&lt;span class="kt"&gt;Class&lt;/span&gt;&lt;span class="p"&gt;;)&lt;/span&gt;&lt;span class="n"&gt;Ljava&lt;/span&gt;&lt;span class="o"&gt;/&lt;/span&gt;&lt;span class="n"&gt;lang&lt;/span&gt;&lt;span class="o"&gt;/&lt;/span&gt;&lt;span class="n"&gt;reflect&lt;/span&gt;&lt;span class="o"&gt;/&lt;/span&gt;&lt;span class="n"&gt;Method&lt;/span&gt;&lt;span class="p"&gt;;&lt;/span&gt;
+&lt;span class="o"&gt;|&lt;/span&gt;             &lt;span class="mh"&gt;0x00000000&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="mh"&gt;0x0&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt; &lt;span class="mh"&gt;0x0&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt; &lt;span class="mh"&gt;0x0&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt; &lt;span class="mh"&gt;0x0&lt;/span&gt;&lt;span class="p"&gt;)&lt;/span&gt; &lt;span class="p"&gt;;&lt;/span&gt; &lt;span class="n"&gt;section&lt;/span&gt;&lt;span class="p"&gt;.&lt;/span&gt;&lt;span class="n"&gt;constant_pool&lt;/span&gt;
+&lt;span class="o"&gt;|&lt;/span&gt;          &lt;span class="mh"&gt;0x00000859&lt;/span&gt;    &lt;span class="mi"&gt;2&lt;/span&gt;&lt;span class="n"&gt;a&lt;/span&gt;           &lt;span class="n"&gt;aload_0&lt;/span&gt;
+&lt;span class="o"&gt;|&lt;/span&gt;          &lt;span class="mh"&gt;0x0000085a&lt;/span&gt;    &lt;span class="n"&gt;b6000f&lt;/span&gt;       &lt;span class="n"&gt;invokevirtual&lt;/span&gt; &lt;span class="n"&gt;java&lt;/span&gt;&lt;span class="o"&gt;/&lt;/span&gt;&lt;span class="n"&gt;lang&lt;/span&gt;&lt;span class="o"&gt;/&lt;/span&gt;&lt;span class="n"&gt;Object&lt;/span&gt;&lt;span class="o"&gt;/&lt;/span&gt;&lt;span class="n"&gt;getClass&lt;/span&gt;&lt;span class="p"&gt;()&lt;/span&gt;&lt;span class="n"&gt;Ljava&lt;/span&gt;&lt;span class="o"&gt;/&lt;/span&gt;&lt;span class="n"&gt;lang&lt;/span&gt;&lt;span class="o"&gt;/&lt;/span&gt;&lt;span class="kt"&gt;Class&lt;/span&gt;&lt;span class="p"&gt;;&lt;/span&gt;
+&lt;span class="o"&gt;|&lt;/span&gt;             &lt;span class="mh"&gt;0x00000000&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="mh"&gt;0x0&lt;/span&gt;&lt;span class="p"&gt;)&lt;/span&gt; &lt;span class="p"&gt;;&lt;/span&gt; &lt;span class="n"&gt;section&lt;/span&gt;&lt;span class="p"&gt;.&lt;/span&gt;&lt;span class="n"&gt;constant_pool&lt;/span&gt;
+&lt;span class="o"&gt;|&lt;/span&gt;          &lt;span class="mh"&gt;0x0000085d&lt;/span&gt;    &lt;span class="mo"&gt;04&lt;/span&gt;           &lt;span class="n"&gt;iconst_1&lt;/span&gt;
+&lt;span class="o"&gt;|&lt;/span&gt;          &lt;span class="mh"&gt;0x0000085e&lt;/span&gt;    &lt;span class="n"&gt;bd001b&lt;/span&gt;       &lt;span class="n"&gt;anewarray&lt;/span&gt; &lt;span class="n"&gt;java&lt;/span&gt;&lt;span class="o"&gt;/&lt;/span&gt;&lt;span class="n"&gt;lang&lt;/span&gt;&lt;span class="o"&gt;/&lt;/span&gt;&lt;span class="n"&gt;Object&lt;/span&gt; 
+&lt;span class="o"&gt;|&lt;/span&gt;          &lt;span class="mh"&gt;0x00000861&lt;/span&gt;    &lt;span class="mi"&gt;59&lt;/span&gt;           &lt;span class="n"&gt;dup&lt;/span&gt;
+&lt;span class="o"&gt;|&lt;/span&gt;          &lt;span class="mh"&gt;0x00000862&lt;/span&gt;    &lt;span class="mo"&gt;03&lt;/span&gt;           &lt;span class="n"&gt;iconst_0&lt;/span&gt;
+&lt;span class="o"&gt;|&lt;/span&gt;          &lt;span class="mh"&gt;0x00000863&lt;/span&gt;    &lt;span class="mi"&gt;1221&lt;/span&gt;         &lt;span class="n"&gt;ldc&lt;/span&gt; &lt;span class="s"&gt;&amp;quot;/x/Make@Som@eFun.cla@ss&amp;quot;&lt;/span&gt;
+&lt;span class="o"&gt;|&lt;/span&gt;          &lt;span class="mh"&gt;0x00000865&lt;/span&gt;    &lt;span class="mi"&gt;1215&lt;/span&gt;         &lt;span class="n"&gt;ldc&lt;/span&gt; &lt;span class="s"&gt;&amp;quot;@&amp;quot;&lt;/span&gt;
+&lt;span class="o"&gt;|&lt;/span&gt;          &lt;span class="mh"&gt;0x00000867&lt;/span&gt;    &lt;span class="mi"&gt;1216&lt;/span&gt;         &lt;span class="n"&gt;ldc&lt;/span&gt; &lt;span class="s"&gt;&amp;quot;&amp;quot;&lt;/span&gt;
+&lt;span class="o"&gt;|&lt;/span&gt;          &lt;span class="mh"&gt;0x00000869&lt;/span&gt;    &lt;span class="n"&gt;b60017&lt;/span&gt;       &lt;span class="n"&gt;invokevirtual&lt;/span&gt; &lt;span class="n"&gt;java&lt;/span&gt;&lt;span class="o"&gt;/&lt;/span&gt;&lt;span class="n"&gt;lang&lt;/span&gt;&lt;span class="o"&gt;/&lt;/span&gt;&lt;span class="n"&gt;String&lt;/span&gt;&lt;span class="o"&gt;/&lt;/span&gt;&lt;span class="n"&gt;replace&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="n"&gt;Ljava&lt;/span&gt;&lt;span class="o"&gt;/&lt;/span&gt;&lt;span class="n"&gt;lang&lt;/span&gt;&lt;span class="o"&gt;/&lt;/span&gt;&lt;span class="n"&gt;CharSequence&lt;/span&gt;&lt;span class="p"&gt;;&lt;/span&gt;&lt;span class="n"&gt;Ljava&lt;/span&gt;&lt;span class="o"&gt;/&lt;/span&gt;&lt;span class="n"&gt;lang&lt;/span&gt;&lt;span class="o"&gt;/&lt;/span&gt;&lt;span class="n"&gt;CharSequence&lt;/span&gt;&lt;span class="p"&gt;;)&lt;/span&gt;&lt;span class="n"&gt;Ljava&lt;/span&gt;&lt;span class="o"&gt;/&lt;/span&gt;&lt;span class="n"&gt;lang&lt;/span&gt;&lt;span class="o"&gt;/&lt;/span&gt;&lt;span class="n"&gt;String&lt;/span&gt;&lt;span class="p"&gt;;&lt;/span&gt;
+&lt;span class="o"&gt;|&lt;/span&gt;             &lt;span class="mh"&gt;0x00000000&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="mh"&gt;0x0&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt; &lt;span class="mh"&gt;0x0&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt; &lt;span class="mh"&gt;0x0&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt; &lt;span class="mh"&gt;0x0&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt; &lt;span class="mh"&gt;0x0&lt;/span&gt;&lt;span class="p"&gt;)&lt;/span&gt; &lt;span class="p"&gt;;&lt;/span&gt; &lt;span class="n"&gt;section&lt;/span&gt;&lt;span class="p"&gt;.&lt;/span&gt;&lt;span class="n"&gt;constant_pool&lt;/span&gt;
+&lt;span class="o"&gt;|&lt;/span&gt;          &lt;span class="mh"&gt;0x0000086c&lt;/span&gt;    &lt;span class="mi"&gt;53&lt;/span&gt;           &lt;span class="n"&gt;aastore&lt;/span&gt;
+&lt;span class="o"&gt;|&lt;/span&gt;          &lt;span class="mh"&gt;0x0000086d&lt;/span&gt;    &lt;span class="n"&gt;b6001c&lt;/span&gt;       &lt;span class="n"&gt;invokevirtual&lt;/span&gt; &lt;span class="n"&gt;java&lt;/span&gt;&lt;span class="o"&gt;/&lt;/span&gt;&lt;span class="n"&gt;lang&lt;/span&gt;&lt;span class="o"&gt;/&lt;/span&gt;&lt;span class="n"&gt;reflect&lt;/span&gt;&lt;span class="o"&gt;/&lt;/span&gt;&lt;span class="n"&gt;Method&lt;/span&gt;&lt;span class="o"&gt;/&lt;/span&gt;&lt;span class="n"&gt;invoke&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="n"&gt;Ljava&lt;/span&gt;&lt;span class="o"&gt;/&lt;/span&gt;&lt;span class="n"&gt;lang&lt;/span&gt;&lt;span class="o"&gt;/&lt;/span&gt;&lt;span class="n"&gt;Object&lt;/span&gt;&lt;span class="p"&gt;;[&lt;/span&gt;&lt;span class="n"&gt;Ljava&lt;/span&gt;&lt;span class="o"&gt;/&lt;/span&gt;&lt;span class="n"&gt;lang&lt;/span&gt;&lt;span class="o"&gt;/&lt;/span&gt;&lt;span class="n"&gt;Object&lt;/span&gt;&lt;span class="p"&gt;;)&lt;/span&gt;&lt;span class="n"&gt;Ljava&lt;/span&gt;&lt;span class="o"&gt;/&lt;/span&gt;&lt;span class="n"&gt;lang&lt;/span&gt;&lt;span class="o"&gt;/&lt;/span&gt;&lt;span class="n"&gt;Object&lt;/span&gt;&lt;span class="p"&gt;;&lt;/span&gt;
+&lt;span class="o"&gt;|&lt;/span&gt;             &lt;span class="mh"&gt;0x00000000&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="mh"&gt;0x0&lt;/span&gt;&lt;span class="p"&gt;)&lt;/span&gt; &lt;span class="p"&gt;;&lt;/span&gt; &lt;span class="n"&gt;section&lt;/span&gt;&lt;span class="p"&gt;.&lt;/span&gt;&lt;span class="n"&gt;constant_pool&lt;/span&gt;
+&lt;span class="o"&gt;|&lt;/span&gt;          &lt;span class="mh"&gt;0x00000870&lt;/span&gt;    &lt;span class="n"&gt;c00022&lt;/span&gt;       &lt;span class="n"&gt;checkcast&lt;/span&gt; &lt;span class="n"&gt;java&lt;/span&gt;&lt;span class="o"&gt;/&lt;/span&gt;&lt;span class="n"&gt;io&lt;/span&gt;&lt;span class="o"&gt;/&lt;/span&gt;&lt;span class="n"&gt;InputStream&lt;/span&gt; 
+&lt;span class="o"&gt;|&lt;/span&gt;          &lt;span class="mh"&gt;0x00000873&lt;/span&gt;    &lt;span class="mi"&gt;4&lt;/span&gt;&lt;span class="n"&gt;d&lt;/span&gt;           &lt;span class="n"&gt;astore_2&lt;/span&gt;
+&lt;span class="o"&gt;|&lt;/span&gt;      &lt;span class="p"&gt;,&lt;/span&gt;&lt;span class="o"&gt;=&amp;lt;&lt;/span&gt; &lt;span class="mh"&gt;0x00000874&lt;/span&gt;    &lt;span class="n"&gt;a70004&lt;/span&gt;       &lt;span class="k"&gt;goto&lt;/span&gt; &lt;span class="mh"&gt;0x0878&lt;/span&gt; &lt;span class="p"&gt;;&lt;/span&gt; &lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="n"&gt;sym&lt;/span&gt;&lt;span class="p"&gt;.&lt;/span&gt;&lt;span class="n"&gt;anypkg_Attacker&lt;/span&gt;&lt;span class="p"&gt;.&lt;/span&gt;&lt;span class="n"&gt;createMe&lt;/span&gt;&lt;span class="p"&gt;)&lt;/span&gt;
+&lt;span class="o"&gt;|&lt;/span&gt;      &lt;span class="o"&gt;|&lt;/span&gt;   &lt;span class="mh"&gt;0x00000877&lt;/span&gt;    &lt;span class="mi"&gt;4&lt;/span&gt;&lt;span class="n"&gt;e&lt;/span&gt;           &lt;span class="n"&gt;astore_3&lt;/span&gt;
+&lt;span class="o"&gt;|&lt;/span&gt;      &lt;span class="err"&gt;`&lt;/span&gt;&lt;span class="o"&gt;-&amp;gt;&lt;/span&gt; &lt;span class="mh"&gt;0x00000878&lt;/span&gt;    &lt;span class="mi"&gt;110800&lt;/span&gt;       &lt;span class="n"&gt;sipush&lt;/span&gt; &lt;span class="mi"&gt;2048&lt;/span&gt;
+&lt;span class="o"&gt;|&lt;/span&gt;          &lt;span class="mh"&gt;0x0000087b&lt;/span&gt;    &lt;span class="n"&gt;bc08&lt;/span&gt;         &lt;span class="n"&gt;newarray&lt;/span&gt; &lt;span class="mi"&gt;8&lt;/span&gt;
+&lt;span class="o"&gt;|&lt;/span&gt;          &lt;span class="mh"&gt;0x0000087d&lt;/span&gt;    &lt;span class="mi"&gt;3&lt;/span&gt;&lt;span class="n"&gt;a04&lt;/span&gt;         &lt;span class="n"&gt;astore&lt;/span&gt; &lt;span class="mi"&gt;4&lt;/span&gt;
+&lt;span class="o"&gt;|&lt;/span&gt;          &lt;span class="mh"&gt;0x0000087f&lt;/span&gt;    &lt;span class="mi"&gt;2&lt;/span&gt;&lt;span class="n"&gt;c&lt;/span&gt;           &lt;span class="n"&gt;aload_2&lt;/span&gt;
+&lt;span class="o"&gt;|&lt;/span&gt;          &lt;span class="mh"&gt;0x00000880&lt;/span&gt;    &lt;span class="mi"&gt;1904&lt;/span&gt;         &lt;span class="n"&gt;aload&lt;/span&gt; &lt;span class="mi"&gt;4&lt;/span&gt;
+&lt;span class="o"&gt;|&lt;/span&gt;          &lt;span class="mh"&gt;0x00000882&lt;/span&gt;    &lt;span class="mo"&gt;03&lt;/span&gt;           &lt;span class="n"&gt;iconst_0&lt;/span&gt;
+&lt;span class="o"&gt;|&lt;/span&gt;          &lt;span class="mh"&gt;0x00000883&lt;/span&gt;    &lt;span class="mi"&gt;1904&lt;/span&gt;         &lt;span class="n"&gt;aload&lt;/span&gt; &lt;span class="mi"&gt;4&lt;/span&gt;
+&lt;span class="o"&gt;|&lt;/span&gt;          &lt;span class="mh"&gt;0x00000885&lt;/span&gt;    &lt;span class="n"&gt;be&lt;/span&gt;           &lt;span class="n"&gt;arraylength&lt;/span&gt;
+&lt;span class="o"&gt;|&lt;/span&gt;          &lt;span class="mh"&gt;0x00000886&lt;/span&gt;    &lt;span class="n"&gt;b60023&lt;/span&gt;       &lt;span class="n"&gt;invokevirtual&lt;/span&gt; &lt;span class="n"&gt;java&lt;/span&gt;&lt;span class="o"&gt;/&lt;/span&gt;&lt;span class="n"&gt;io&lt;/span&gt;&lt;span class="o"&gt;/&lt;/span&gt;&lt;span class="n"&gt;InputStream&lt;/span&gt;&lt;span class="o"&gt;/&lt;/span&gt;&lt;span class="n"&gt;read&lt;/span&gt;&lt;span class="p"&gt;([&lt;/span&gt;&lt;span class="n"&gt;BII&lt;/span&gt;&lt;span class="p"&gt;)&lt;/span&gt;&lt;span class="n"&gt;I&lt;/span&gt;
+&lt;span class="o"&gt;|&lt;/span&gt;             &lt;span class="mh"&gt;0x00000000&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="mh"&gt;0x0&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt; &lt;span class="mh"&gt;0x0&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt; &lt;span class="mh"&gt;0x0&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt; &lt;span class="mh"&gt;0x0&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt; &lt;span class="mh"&gt;0x0&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt; &lt;span class="mh"&gt;0x0&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt; &lt;span class="mh"&gt;0x0&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt; &lt;span class="mh"&gt;0x0&lt;/span&gt;&lt;span class="p"&gt;)&lt;/span&gt; &lt;span class="p"&gt;;&lt;/span&gt; &lt;span class="n"&gt;section&lt;/span&gt;&lt;span class="p"&gt;.&lt;/span&gt;&lt;span class="n"&gt;constant_pool&lt;/span&gt;
+&lt;span class="o"&gt;|&lt;/span&gt;          &lt;span class="mh"&gt;0x00000889&lt;/span&gt;    &lt;span class="mi"&gt;59&lt;/span&gt;           &lt;span class="n"&gt;dup&lt;/span&gt;
+&lt;span class="o"&gt;|&lt;/span&gt;          &lt;span class="mh"&gt;0x0000088a&lt;/span&gt;    &lt;span class="mi"&gt;3&lt;/span&gt;&lt;span class="n"&gt;e&lt;/span&gt;           &lt;span class="n"&gt;istore_3&lt;/span&gt;
+&lt;span class="o"&gt;|&lt;/span&gt;          &lt;span class="mh"&gt;0x0000088b&lt;/span&gt;    &lt;span class="mo"&gt;02&lt;/span&gt;           &lt;span class="n"&gt;iconst_m1&lt;/span&gt;
+&lt;span class="o"&gt;|&lt;/span&gt;     &lt;span class="p"&gt;,&lt;/span&gt;&lt;span class="o"&gt;==&amp;lt;&lt;/span&gt; &lt;span class="mh"&gt;0x0000088c&lt;/span&gt;    &lt;span class="mf"&gt;9f&lt;/span&gt;&lt;span class="mo"&gt;000&lt;/span&gt;&lt;span class="n"&gt;e&lt;/span&gt;       &lt;span class="n"&gt;if_icmpeq&lt;/span&gt; &lt;span class="mh"&gt;0x089a&lt;/span&gt;
+&lt;span class="o"&gt;|&lt;/span&gt;     &lt;span class="o"&gt;|&lt;/span&gt;    &lt;span class="mh"&gt;0x0000088f&lt;/span&gt;    &lt;span class="mi"&gt;2&lt;/span&gt;&lt;span class="n"&gt;b&lt;/span&gt;           &lt;span class="n"&gt;aload_1&lt;/span&gt;
+&lt;span class="o"&gt;|&lt;/span&gt;     &lt;span class="o"&gt;|&lt;/span&gt;    &lt;span class="mh"&gt;0x00000890&lt;/span&gt;    &lt;span class="mi"&gt;1904&lt;/span&gt;         &lt;span class="n"&gt;aload&lt;/span&gt; &lt;span class="mi"&gt;4&lt;/span&gt;
+&lt;span class="o"&gt;|&lt;/span&gt;     &lt;span class="o"&gt;|&lt;/span&gt;    &lt;span class="mh"&gt;0x00000892&lt;/span&gt;    &lt;span class="mo"&gt;03&lt;/span&gt;           &lt;span class="n"&gt;iconst_0&lt;/span&gt;
+&lt;span class="o"&gt;|&lt;/span&gt;     &lt;span class="o"&gt;|&lt;/span&gt;    &lt;span class="mh"&gt;0x00000893&lt;/span&gt;    &lt;span class="mi"&gt;1&lt;/span&gt;&lt;span class="n"&gt;d&lt;/span&gt;           &lt;span class="n"&gt;iload_3&lt;/span&gt;
+&lt;span class="o"&gt;|&lt;/span&gt;     &lt;span class="o"&gt;|&lt;/span&gt;    &lt;span class="mh"&gt;0x00000894&lt;/span&gt;    &lt;span class="n"&gt;b60024&lt;/span&gt;       &lt;span class="n"&gt;invokevirtual&lt;/span&gt; &lt;span class="n"&gt;java&lt;/span&gt;&lt;span class="o"&gt;/&lt;/span&gt;&lt;span class="n"&gt;io&lt;/span&gt;&lt;span class="o"&gt;/&lt;/span&gt;&lt;span class="n"&gt;ByteArrayOutputStream&lt;/span&gt;&lt;span class="o"&gt;/&lt;/span&gt;&lt;span class="n"&gt;write&lt;/span&gt;&lt;span class="p"&gt;([&lt;/span&gt;&lt;span class="n"&gt;BII&lt;/span&gt;&lt;span class="p"&gt;)&lt;/span&gt;&lt;span class="n"&gt;V&lt;/span&gt;
+&lt;span class="o"&gt;|&lt;/span&gt;     &lt;span class="o"&gt;|&lt;/span&gt;       &lt;span class="mh"&gt;0x00000000&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="mh"&gt;0x0&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt; &lt;span class="mh"&gt;0x0&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt; &lt;span class="mh"&gt;0x0&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt; &lt;span class="mh"&gt;0x0&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt; &lt;span class="mh"&gt;0x0&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt; &lt;span class="mh"&gt;0x0&lt;/span&gt;&lt;span class="p"&gt;)&lt;/span&gt; &lt;span class="p"&gt;;&lt;/span&gt; &lt;span class="n"&gt;section&lt;/span&gt;&lt;span class="p"&gt;.&lt;/span&gt;&lt;span class="n"&gt;constant_pool&lt;/span&gt;
+&lt;span class="o"&gt;|&lt;/span&gt;     &lt;span class="o"&gt;|&lt;/span&gt;    &lt;span class="mh"&gt;0x00000897&lt;/span&gt;    &lt;span class="n"&gt;a7ffe8&lt;/span&gt;       &lt;span class="k"&gt;goto&lt;/span&gt; &lt;span class="mh"&gt;0x087f&lt;/span&gt; &lt;span class="p"&gt;;&lt;/span&gt; &lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="n"&gt;sym&lt;/span&gt;&lt;span class="p"&gt;.&lt;/span&gt;&lt;span class="n"&gt;anypkg_Attacker&lt;/span&gt;&lt;span class="p"&gt;.&lt;/span&gt;&lt;span class="n"&gt;createMe&lt;/span&gt;&lt;span class="p"&gt;)&lt;/span&gt;
+&lt;span class="o"&gt;|&lt;/span&gt;     &lt;span class="err"&gt;`&lt;/span&gt;&lt;span class="o"&gt;--&amp;gt;&lt;/span&gt; &lt;span class="mh"&gt;0x0000089a&lt;/span&gt;    &lt;span class="mi"&gt;2&lt;/span&gt;&lt;span class="n"&gt;b&lt;/span&gt;           &lt;span class="n"&gt;aload_1&lt;/span&gt;
+&lt;span class="o"&gt;|&lt;/span&gt;          &lt;span class="mh"&gt;0x0000089b&lt;/span&gt;    &lt;span class="n"&gt;b60025&lt;/span&gt;       &lt;span class="n"&gt;invokevirtual&lt;/span&gt; &lt;span class="n"&gt;java&lt;/span&gt;&lt;span class="o"&gt;/&lt;/span&gt;&lt;span class="n"&gt;io&lt;/span&gt;&lt;span class="o"&gt;/&lt;/span&gt;&lt;span class="n"&gt;ByteArrayOutputStream&lt;/span&gt;&lt;span class="o"&gt;/&lt;/span&gt;&lt;span class="n"&gt;toByteArray&lt;/span&gt;&lt;span class="p"&gt;()[&lt;/span&gt;&lt;span class="n"&gt;B&lt;/span&gt;
+&lt;span class="o"&gt;|&lt;/span&gt;             &lt;span class="mh"&gt;0x00000000&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="mh"&gt;0x0&lt;/span&gt;&lt;span class="p"&gt;)&lt;/span&gt; &lt;span class="p"&gt;;&lt;/span&gt; &lt;span class="n"&gt;section&lt;/span&gt;&lt;span class="p"&gt;.&lt;/span&gt;&lt;span class="n"&gt;constant_pool&lt;/span&gt;
+&lt;span class="err"&gt;\&lt;/span&gt;          &lt;span class="mh"&gt;0x0000089e&lt;/span&gt;    &lt;span class="n"&gt;b0&lt;/span&gt;           &lt;span class="n"&gt;areturn&lt;/span&gt;
+
+&lt;span class="p"&gt;[&lt;/span&gt;&lt;span class="mh"&gt;0x00000836&lt;/span&gt;&lt;span class="p"&gt;]&lt;/span&gt;&lt;span class="o"&gt;&amp;gt;&lt;/span&gt; &lt;span class="n"&gt;y&lt;/span&gt; &lt;span class="mi"&gt;105&lt;/span&gt;
+&lt;span class="p"&gt;[&lt;/span&gt;&lt;span class="mh"&gt;0x00000836&lt;/span&gt;&lt;span class="p"&gt;]&lt;/span&gt;&lt;span class="o"&gt;&amp;gt;&lt;/span&gt; &lt;span class="n"&gt;o&lt;/span&gt;
+&lt;span class="o"&gt;-&lt;/span&gt; &lt;span class="mi"&gt;51309&lt;/span&gt; &lt;span class="n"&gt;zip&lt;/span&gt;&lt;span class="o"&gt;:&lt;/span&gt;&lt;span class="c1"&gt;//example.zip//anypkg/Attacker.class @ 0x0 ; r&lt;/span&gt;
+&lt;span class="p"&gt;[&lt;/span&gt;&lt;span class="mh"&gt;0x00000836&lt;/span&gt;&lt;span class="p"&gt;]&lt;/span&gt;&lt;span class="o"&gt;&amp;gt;&lt;/span&gt; &lt;span class="n"&gt;o&lt;/span&gt;&lt;span class="o"&gt;-&lt;/span&gt; &lt;span class="mi"&gt;51309&lt;/span&gt;
+&lt;span class="p"&gt;[&lt;/span&gt;&lt;span class="mh"&gt;0x00000836&lt;/span&gt;&lt;span class="p"&gt;]&lt;/span&gt;&lt;span class="o"&gt;&amp;gt;&lt;/span&gt; &lt;span class="n"&gt;o&lt;/span&gt;&lt;span class="o"&gt;+&lt;/span&gt; &lt;span class="n"&gt;createMe&lt;/span&gt;&lt;span class="p"&gt;.&lt;/span&gt;&lt;span class="n"&gt;method&lt;/span&gt;
+
+&lt;span class="p"&gt;[&lt;/span&gt;&lt;span class="mh"&gt;0x00000836&lt;/span&gt;&lt;span class="p"&gt;]&lt;/span&gt;&lt;span class="o"&gt;&amp;gt;&lt;/span&gt; &lt;span class="n"&gt;s&lt;/span&gt; &lt;span class="mi"&gt;0&lt;/span&gt;&lt;span class="p"&gt;;&lt;/span&gt; &lt;span class="p"&gt;;&lt;/span&gt; &lt;span class="n"&gt;yy&lt;/span&gt;&lt;span class="p"&gt;;&lt;/span&gt; &lt;span class="o"&gt;!&lt;/span&gt;&lt;span class="n"&gt;ls&lt;/span&gt; &lt;span class="o"&gt;-&lt;/span&gt;&lt;span class="n"&gt;al&lt;/span&gt;
+&lt;span class="n"&gt;total&lt;/span&gt; &lt;span class="mi"&gt;5&lt;/span&gt;
+&lt;span class="n"&gt;drwxrwxr&lt;/span&gt;&lt;span class="o"&gt;-&lt;/span&gt;&lt;span class="n"&gt;x&lt;/span&gt; &lt;span class="mi"&gt;5&lt;/span&gt; &lt;span class="n"&gt;dso&lt;/span&gt; &lt;span class="n"&gt;dso&lt;/span&gt; &lt;span class="mi"&gt;4096&lt;/span&gt; &lt;span class="n"&gt;Apr&lt;/span&gt;  &lt;span class="mi"&gt;8&lt;/span&gt; &lt;span class="mi"&gt;20&lt;/span&gt;&lt;span class="o"&gt;:&lt;/span&gt;&lt;span class="mi"&gt;41&lt;/span&gt; &lt;span class="p"&gt;.&lt;/span&gt;
+&lt;span class="n"&gt;drwxrwxr&lt;/span&gt;&lt;span class="o"&gt;-&lt;/span&gt;&lt;span class="n"&gt;x&lt;/span&gt; &lt;span class="mi"&gt;6&lt;/span&gt; &lt;span class="n"&gt;dso&lt;/span&gt; &lt;span class="n"&gt;dso&lt;/span&gt; &lt;span class="mi"&gt;4096&lt;/span&gt; &lt;span class="n"&gt;Nov&lt;/span&gt; &lt;span class="mi"&gt;21&lt;/span&gt; &lt;span class="mi"&gt;19&lt;/span&gt;&lt;span class="o"&gt;:&lt;/span&gt;&lt;span class="mi"&gt;33&lt;/span&gt; &lt;span class="p"&gt;..&lt;/span&gt;
+&lt;span class="o"&gt;-&lt;/span&gt;&lt;span class="n"&gt;rw&lt;/span&gt;&lt;span class="o"&gt;-&lt;/span&gt;&lt;span class="n"&gt;r&lt;/span&gt;&lt;span class="o"&gt;--&lt;/span&gt;&lt;span class="n"&gt;r&lt;/span&gt;&lt;span class="o"&gt;--&lt;/span&gt; &lt;span class="mi"&gt;1&lt;/span&gt; &lt;span class="n"&gt;dso&lt;/span&gt; &lt;span class="n"&gt;dso&lt;/span&gt;  &lt;span class="mi"&gt;256&lt;/span&gt; &lt;span class="n"&gt;Apr&lt;/span&gt;  &lt;span class="mi"&gt;8&lt;/span&gt; &lt;span class="mi"&gt;20&lt;/span&gt;&lt;span class="o"&gt;:&lt;/span&gt;&lt;span class="mi"&gt;33&lt;/span&gt; &lt;span class="n"&gt;Attacker&lt;/span&gt;&lt;span class="p"&gt;.&lt;/span&gt;&lt;span class="n"&gt;class&lt;/span&gt;
+&lt;span class="o"&gt;-&lt;/span&gt;&lt;span class="n"&gt;rw&lt;/span&gt;&lt;span class="o"&gt;-&lt;/span&gt;&lt;span class="n"&gt;r&lt;/span&gt;&lt;span class="o"&gt;--&lt;/span&gt;&lt;span class="n"&gt;r&lt;/span&gt;&lt;span class="o"&gt;--&lt;/span&gt; &lt;span class="mi"&gt;1&lt;/span&gt; &lt;span class="n"&gt;dso&lt;/span&gt; &lt;span class="n"&gt;dso&lt;/span&gt;  &lt;span class="mi"&gt;105&lt;/span&gt; &lt;span class="n"&gt;Apr&lt;/span&gt;  &lt;span class="mi"&gt;8&lt;/span&gt; &lt;span class="mi"&gt;20&lt;/span&gt;&lt;span class="o"&gt;:&lt;/span&gt;&lt;span class="mi"&gt;41&lt;/span&gt; &lt;span class="n"&gt;createMe&lt;/span&gt;&lt;span class="p"&gt;.&lt;/span&gt;&lt;span class="n"&gt;method&lt;/span&gt;
+&lt;span class="o"&gt;-&lt;/span&gt;&lt;span class="n"&gt;rw&lt;/span&gt;&lt;span class="o"&gt;-&lt;/span&gt;&lt;span class="n"&gt;r&lt;/span&gt;&lt;span class="o"&gt;--&lt;/span&gt;&lt;span class="n"&gt;r&lt;/span&gt;&lt;span class="o"&gt;--&lt;/span&gt; &lt;span class="mi"&gt;1&lt;/span&gt; &lt;span class="n"&gt;dso&lt;/span&gt; &lt;span class="n"&gt;dso&lt;/span&gt; &lt;span class="mi"&gt;2104&lt;/span&gt; &lt;span class="n"&gt;Apr&lt;/span&gt;  &lt;span class="mi"&gt;8&lt;/span&gt; &lt;span class="mi"&gt;11&lt;/span&gt;&lt;span class="o"&gt;:&lt;/span&gt;&lt;span class="mi"&gt;43&lt;/span&gt; &lt;span class="n"&gt;example&lt;/span&gt;&lt;span class="p"&gt;.&lt;/span&gt;&lt;span class="n"&gt;zip&lt;/span&gt;
+&lt;/pre&gt;&lt;/div&gt;
+
+
+&lt;p&gt;Now the code will be loaded from the createMe.method and the code will be disassembled with "&lt;strong&gt;pdn&lt;/strong&gt;" (print disassembly of N bytes).  Next, the architecture will be switched to Java and "&lt;strong&gt;pdn&lt;/strong&gt;" will be used again.  Note the pdn is used to disassemble up to the number of bytes passed to it.  In this case, 105 bytes are all that are in createMe.method, so only 105 bytes should be disassembled.&lt;/p&gt;
+&lt;p&gt;When &lt;strong&gt;pdn&lt;/strong&gt; is first executed it is going to print &lt;em&gt;105&lt;/em&gt; instructions from data interpretted as x86 machine code.&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span class="err"&gt;$&lt;/span&gt; &lt;span class="nx"&gt;r2&lt;/span&gt; &lt;span class="nx"&gt;createMe.method&lt;/span&gt; 
+&lt;span class="err"&gt;[&lt;/span&gt;&lt;span class="mh"&gt;0x00000000&lt;/span&gt;&lt;span class="cp"&gt;]&lt;/span&gt;&amp;gt; pdn 105
+0x00000000   bb001d59b7 mov ebx, 0xb7591d00
+0x00000005         001e add &lt;span class="cp"&gt;[&lt;/span&gt;&lt;span class="nx"&gt;rsi&lt;/span&gt;&lt;span class="cp"&gt;]&lt;/span&gt;, bl
+0x00000007     4c014d13 add &lt;span class="cp"&gt;[&lt;/span&gt;&lt;span class="nx"&gt;rbp&lt;/span&gt;&lt;span class="o"&gt;+&lt;/span&gt;&lt;span class="mh"&gt;0x13&lt;/span&gt;&lt;span class="cp"&gt;]&lt;/span&gt;, r9
+0x0000000b         0018 add &lt;span class="cp"&gt;[&lt;/span&gt;&lt;span class="nx"&gt;rax&lt;/span&gt;&lt;span class="cp"&gt;]&lt;/span&gt;, bl
+0x0000000d         121f adc bl, &lt;span class="cp"&gt;[&lt;/span&gt;&lt;span class="nx"&gt;rdi&lt;/span&gt;&lt;span class="cp"&gt;]&lt;/span&gt;
+0x0000000f 12151216b600 adc dl, &lt;span class="cp"&gt;[&lt;/span&gt;&lt;span class="nx"&gt;rip&lt;/span&gt;&lt;span class="o"&gt;+&lt;/span&gt;&lt;span class="mh"&gt;0xb61612&lt;/span&gt;&lt;span class="cp"&gt;]&lt;/span&gt;
+0x00000015               17  &lt;span class="nt"&gt;&amp;lt;invalid&amp;gt;&lt;/span&gt;
+0x00000016         04bd add al, 0xbd
+0x00000018         0018 add &lt;span class="cp"&gt;[&lt;/span&gt;&lt;span class="nx"&gt;rax&lt;/span&gt;&lt;span class="cp"&gt;]&lt;/span&gt;, bl
+0x0000001a           59 pop rcx
+0x0000001b         0313 add edx, &lt;span class="cp"&gt;[&lt;/span&gt;&lt;span class="nx"&gt;rbx&lt;/span&gt;&lt;span class="cp"&gt;]&lt;/span&gt;
+0x0000001d         0020 add &lt;span class="cp"&gt;[&lt;/span&gt;&lt;span class="nx"&gt;rax&lt;/span&gt;&lt;span class="cp"&gt;]&lt;/span&gt;, ah
+&lt;span class="nt"&gt;&amp;lt;snip&amp;gt;&lt;/span&gt;
+0x00000061       a7ffe8 goto 0x0049
+0x00000064           2b aload_1
+0x00000065       b60025 invokevirtual (37) INVALID CP_OBJ
+0x00000068           b0 areturn
+&lt;span class="cp"&gt;[&lt;/span&gt;&lt;span class="mh"&gt;0x00000000&lt;/span&gt;&lt;span class="cp"&gt;]&lt;/span&gt;&amp;gt; 
+&lt;/pre&gt;&lt;/div&gt;
+
+
+&lt;p&gt;After the architecture is switched to Java with &lt;strong&gt;e asm.arch=java&lt;/strong&gt;, &lt;strong&gt;pdn&lt;/strong&gt; prints &lt;em&gt;105&lt;/em&gt; instructions disasembled as JVM bytecode.&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span class="cp"&gt;[&lt;/span&gt;&lt;span class="mh"&gt;0x00000000&lt;/span&gt;&lt;span class="cp"&gt;]&lt;/span&gt;&amp;gt; e asm.arch=java; pdn 105
+0x00000000       bb001d new (29) INVALID CP_OBJ
+0x00000003           59 dup
+0x00000004       b7001e invokespecial (30) INVALID CP_OBJ
+0x00000007           4c astore_1
+0x00000008           01 aconst_null
+0x00000009           4d astore_2
+&lt;span class="nt"&gt;&amp;lt;snip&amp;gt;&lt;/span&gt;
+0x00000055           02 iconst_m1
+0x00000056       9f000e if_icmpeq 0x0064
+0x00000059           2b aload_1
+0x0000005a         1904 aload 4
+0x0000005c           03 iconst_0
+0x0000005d           1d iload_3
+0x0000005e       b60024 invokevirtual (36) INVALID CP_OBJ
+0x00000061       a7ffe8 goto 0x0049
+0x00000064           2b aload_1
+0x00000065       b60025 invokevirtual (37) INVALID CP_OBJ
+0x00000068           b0 areturn
+&lt;span class="cp"&gt;[&lt;/span&gt;&lt;span class="mh"&gt;0x00000000&lt;/span&gt;&lt;span class="cp"&gt;]&lt;/span&gt;&amp;gt;
+&lt;/pre&gt;&lt;/div&gt;
+
+
+&lt;h3&gt;Yank Some Code into the Archive to a File&lt;/h3&gt;
+&lt;p&gt;Below is an example of how to yank a data from a file on disk and then written into a ZIP archive.    In the case of Java, this is a great way to inject class files into an archive (topic of future discussion).  In this case, the sb.class is going to be added to the example.zip archive without having to use the zip command.  Once added to the class, "&lt;strong&gt;ib&lt;/strong&gt;" will be executed to load class file.  Then the radare session is quit, and the file is reloaded from the archive.&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span class="err"&gt;$&lt;/span&gt; &lt;span class="nx"&gt;r2&lt;/span&gt; &lt;span class="nb"&gt;zip&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;&lt;span class="c1"&gt;//example.zip&lt;/span&gt;
+
+&lt;span class="n"&gt;Files&lt;/span&gt; &lt;span class="k"&gt;in&lt;/span&gt; &lt;span class="nb"&gt;archive&lt;/span&gt;
+&lt;span class="mi"&gt;0&lt;/span&gt; &lt;span class="nx"&gt;anypkg&lt;/span&gt;&lt;span class="p"&gt;/&lt;/span&gt;&lt;span class="nx"&gt;Attacker.class&lt;/span&gt;
+&lt;span class="mi"&gt;1&lt;/span&gt; &lt;span class="nx"&gt;anypkg&lt;/span&gt;&lt;span class="p"&gt;/&lt;/span&gt;&lt;span class="nx"&gt;BlyahaMuha.class&lt;/span&gt;
+
+&lt;span class="err"&gt;$&lt;/span&gt; &lt;span class="nx"&gt;r2&lt;/span&gt; &lt;span class="nb"&gt;zip&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;&lt;span class="c1"&gt;//example.zip//sb.class&lt;/span&gt;
+&lt;span class="err"&gt;[&lt;/span&gt;&lt;span class="mi"&gt;0000&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;&lt;span class="mi"&gt;0000&lt;/span&gt;&lt;span class="cp"&gt;]&lt;/span&gt;&amp;gt; yfa sb.class
+&lt;span class="cp"&gt;[&lt;/span&gt;&lt;span class="mi"&gt;0000&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;&lt;span class="mi"&gt;0000&lt;/span&gt;&lt;span class="cp"&gt;]&lt;/span&gt;&amp;gt; yy
+&lt;span class="cp"&gt;[&lt;/span&gt;&lt;span class="mi"&gt;0000&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;&lt;span class="mi"&gt;0000&lt;/span&gt;&lt;span class="cp"&gt;]&lt;/span&gt;&amp;gt; ib
+&lt;span class="cp"&gt;[&lt;/span&gt;&lt;span class="mi"&gt;0000&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;&lt;span class="mi"&gt;1225&lt;/span&gt;&lt;span class="cp"&gt;]&lt;/span&gt;&amp;gt; if
+file    sb.class
+type    JAVA CLASS
+pic     false
+has_va  false
+root    class
+class   0x3200 0x0000
+lang    java
+arch    java
+bits    32
+machine Java VM
+os      any
+subsys  any
+endian  little
+strip   false
+static  false
+linenum true
+lsyms   true
+relocs  false
+rpath   NONE
+type    JAVA CLASS
+os      any
+arch    Java VM
+bits    32
+endian  little
+file    sb.class
+fd      5031
+size    0x28e7
+mode    r--
+block   0x100
+uri     zip://example.zip//sb.class
+
+&lt;span class="cp"&gt;[&lt;/span&gt;&lt;span class="mi"&gt;0000&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;&lt;span class="mi"&gt;1225&lt;/span&gt;&lt;span class="cp"&gt;]&lt;/span&gt;&amp;gt; q
+
+$ r2 zip://example.zip//sb.class
+&lt;span class="cp"&gt;[&lt;/span&gt;&lt;span class="mh"&gt;0x0000108c&lt;/span&gt;&lt;span class="cp"&gt;]&lt;/span&gt;&amp;gt; af;pdf
+/ (fcn) sym.java_lang_Object._init_ 16
+|          0x0000108c    2a           aload_0
+|          0x0000108d    b7000a       invokespecial java/lang/Object/&lt;span class="nt"&gt;&amp;lt;init&amp;gt;&lt;/span&gt;()V
+|             0x00000000(0x0) ; section.constant_pool
+|          0x00001090    2a           aload_0
+|          0x00001091    bb000c       new java/lang/StringBuilder 
+|          0x00001094    59           dup
+|          0x00001095    b7000e       invokespecial java/lang/StringBuilder/&lt;span class="nt"&gt;&amp;lt;init&amp;gt;&lt;/span&gt;()V
+|             0x00000000(0x0) ; section.constant_pool
+|          0x00001098    b5000f       putfield sb/thisSb Ljava/lang/StringBuilder;
+\          0x0000109b    b1           return
+
+&lt;span class="cp"&gt;[&lt;/span&gt;&lt;span class="mh"&gt;0x0000108c&lt;/span&gt;&lt;span class="cp"&gt;]&lt;/span&gt;&amp;gt; if
+file    sb.class
+type    JAVA CLASS
+pic     false
+has_va  false
+root    class
+class   0x3200 0x0000
+lang    java
+arch    java
+bits    32
+machine Java VM
+os      any
+subsys  any
+endian  little
+strip   false
+static  false
+linenum true
+lsyms   true
+relocs  false
+rpath   NONE
+type    JAVA CLASS
+os      any
+arch    Java VM
+bits    32
+endian  little
+file    sb.class
+fd      53803
+size    0x28e7
+mode    r--
+block   0x100
+uri     zip://example.zip//sb.class
+&lt;/pre&gt;&lt;/div&gt;
+
+
+&lt;h2&gt;6. Conclusions&lt;/h2&gt;
+&lt;p&gt;This concludes the initial post of the radare extensions for Java reverse engineering.  In the next few posts, there will be a more detailed discussion about how to perform in-depth Java reversing and analysis with Radare extensions for Java.&lt;/p&gt;
+&lt;p&gt;greetz: pancake, xvilka, zlul (resident fuzzer), jvoisin, maijin&lt;/p&gt;</summary><category term="radare"></category><category term="hacking"></category><category term="reverse engineering"></category><category term="java"></category><category term="coding"></category><category term="frameworks"></category></entry></feed>
