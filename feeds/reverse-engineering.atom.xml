@@ -1,5 +1,353 @@
 <?xml version="1.0" encoding="utf-8"?>
-<feed xmlns="http://www.w3.org/2005/Atom"><title>dsocon</title><link href="http://dsocon.thecoverofnight.com/" rel="alternate"></link><link href="http://dsocon.thecoverofnight.com/feeds/reverse-engineering.atom.xml" rel="self"></link><id>http://dsocon.thecoverofnight.com/</id><updated>2013-04-09T00:00:00-05:00</updated><entry><title>Introduction to Radare Java Reverse Engineering</title><link href="http://dsocon.thecoverofnight.com/posts/2013/04/radare-java-intro/" rel="alternate"></link><updated>2013-04-09T00:00:00-05:00</updated><author><name>Adam Pridgen</name></author><id>tag:dsocon.thecoverofnight.com,2013-04-09:posts/2013/04/radare-java-intro/</id><summary type="html">&lt;h2&gt;0. Introduction&lt;/h2&gt;
+<feed xmlns="http://www.w3.org/2005/Atom"><title>dynamically shared objects</title><link href="http://dso.thecoverofnight.com/" rel="alternate"></link><link href="http://dso.thecoverofnight.com/feeds/reverse-engineering.atom.xml" rel="self"></link><id>http://dso.thecoverofnight.com/</id><updated>2014-04-13T00:00:00-05:00</updated><entry><title>Using Radare to Enumerate Artifacts in a Java Class File</title><link href="http://dso.thecoverofnight.com/posts/2014/04/radare-java-artifact-enumeration/" rel="alternate"></link><updated>2014-04-13T00:00:00-05:00</updated><author><name>Adam Pridgen</name></author><id>tag:dso.thecoverofnight.com,2014-04-13:posts/2014/04/radare-java-artifact-enumeration/</id><summary type="html">&lt;h2&gt;0. Introduction&lt;/h2&gt;
+&lt;p&gt;In the last post, we explored loading Java class files and performing some of the 
+typical operations that one might expect a hex-editor to do.  The tasks shown included:&lt;/p&gt;
+&lt;ol&gt;
+&lt;li&gt;loading data from a hexlified string and writing to a file&lt;/li&gt;
+&lt;li&gt;direct file manipulation in a ZIP or JAR&lt;/li&gt;
+&lt;li&gt;copy and pasting data &lt;/li&gt;
+&lt;li&gt;extending the file size&lt;/li&gt;
+&lt;/ol&gt;
+&lt;p&gt;This post is going to go into alitte more detail about how to perform cursory static analysis of
+a class file.  Specifically, the topics are going to cover commands that print the prototypes for a class
+file, explore method and field information in the class file metadata, and then dig through the print
+out information related to the Constant Pool.  Before getting started, we are going to load up an
+example archive, and look at the output from the &lt;strong&gt;java summary&lt;/strong&gt; command.  This command will show a 
+broad summary of the class file in question, which breaks down the number of entries in the major 
+section of the &lt;strong&gt;Constant Pool&lt;/strong&gt;, &lt;strong&gt;Methods&lt;/strong&gt;, &lt;strong&gt;Fields&lt;/strong&gt;, etc.  This post is intended to be interactive
+so that you can learn by example, so be fore-warned it will likely be a little dry.&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span class="cp"&gt;# use radare to write our binary zip file from a string and then open up the first file entry in the zip file&lt;/span&gt;
+&lt;span class="err"&gt;$&lt;/span&gt; &lt;span class="n"&gt;r2&lt;/span&gt; &lt;span class="o"&gt;-&lt;/span&gt;&lt;span class="n"&gt;c&lt;/span&gt; &lt;span class="s"&gt;&amp;quot;wx 504b0304140000000800dd7c7f44195f7fd7f2020000ef0400003a001c0072657365617263685f646174612f6578706572696d656e742f6465636f6d70696c65722f64756d7065645f6a61725f6465632f632e636c617373555409000361d2395392c43e5375780b000104e803000004e8030000ad52cd4f135110ff3dbadb6dcb0205f9d002f2a5d8166c0501452ac216488ca02628849664b32c0b2ec2962c8b112f26c69b9ebce195c3269ef8484a2209dcfda35ce76df988c2d1cdbe79f37e33f3667ef3e6d7ef9fc7007a311142b38476091d126e49b82da1338232544610401517351188fc28221a41906b4154cbb88e6b5c34c868419d8c56d4cb68431d43209e9861e88c4fae68efb4f4aa662da7a71ddbb4968712972186faab1cf30a37e4952b23446ea014c18c6999ce30297a8abb3108d9c2a2c15035695ac6f3cdb505c37ea52dac1212992e6cdaba3161f28328dab3d57906b6c0202f1a3ac5289b4b4b864d371996ee5f115a361c65cb313618a21725bc58583174e72fa854155da653c51b9b567acddcd0d3cae8f4f840df987fb77dd9306e9d1ac2b96753fda9fed4e038dd4004584e461c8930042425c465a49026d4a4f5348c6edc95d0cbd07291bec472a260af69cef87bdd5877cc8245de1f186aaeea5d28a3affa5d93f1000f19ca9d42f68d668fdab6b645fd8b27f259fee603fc694badce266638f248c6309e50874ccb316c4a511bbfe271b8e76319f7d1c7298c32544c3b9afe764a5bf71f4202f12ccb676950049a31d00a73bea4c57810ed02181f2d92313a35d3ce6817938790f64861682419f441c90fae3d754d526a8ed61c2138770839b90fa588701115bbffc44528eee679dc171a6c5e4a6a1f5d992304e68e20527c245944f92142fbb8b78ddac66dc82e8493800bf1443840d72ec53451f6387aa8e45674d05e769e434025b2a4a711f4c8542621403c24f48c90963ddd3dcedfb7f852218110facfb83385cae4e57eac6151cf45f8008a0b472d6270ee580d0ca93961075373b1f9be5868fd07f9f5a0f405fcbe01edb4eed0ea8ebe74511bed745115ad76118966884454fff4edf5673035f71da179d5f58ed45c6cc73ba006e4d443648a185167d559d7fb5aea3a67b307d9a3a6339f0a952f9e11f0882ea10146f898c79f8c26c73fd04fd6360e04cf014284ff84f8a9a40b84a0aa8b521ac8dee44fd98d3f504b01021e03140000000800dd7c7f44195f7fd7f2020000ef0400003a0018000000000000000000a4810000000072657365617263685f646174612f6578706572696d656e742f6465636f6d70696c65722f64756d7065645f6a61725f6465632f632e636c617373555405000361d2395375780b000104e803000004e8030000504b0506000000000100010080000000660300000000&amp;quot;&lt;/span&gt; &lt;span class="o"&gt;-&lt;/span&gt;&lt;span class="n"&gt;w&lt;/span&gt; &lt;span class="n"&gt;example&lt;/span&gt;&lt;span class="p"&gt;.&lt;/span&gt;&lt;span class="n"&gt;zip&lt;/span&gt;
+
+&lt;span class="p"&gt;[&lt;/span&gt;&lt;span class="mh"&gt;0x00000000&lt;/span&gt;&lt;span class="p"&gt;]&lt;/span&gt;&lt;span class="o"&gt;&amp;gt;&lt;/span&gt; &lt;span class="n"&gt;q&lt;/span&gt;
+
+&lt;span class="err"&gt;$&lt;/span&gt; &lt;span class="n"&gt;r2&lt;/span&gt; &lt;span class="n"&gt;zip&lt;/span&gt;&lt;span class="o"&gt;:&lt;/span&gt;&lt;span class="c1"&gt;//example.zip::0&lt;/span&gt;
+&lt;span class="p"&gt;[&lt;/span&gt;&lt;span class="mh"&gt;0x000002af&lt;/span&gt;&lt;span class="p"&gt;]&lt;/span&gt;&lt;span class="o"&gt;&amp;gt;&lt;/span&gt;
+
+&lt;span class="p"&gt;[&lt;/span&gt;&lt;span class="mh"&gt;0x00000312&lt;/span&gt;&lt;span class="p"&gt;]&lt;/span&gt;&lt;span class="o"&gt;&amp;gt;&lt;/span&gt; &lt;span class="n"&gt;java&lt;/span&gt; &lt;span class="n"&gt;summary&lt;/span&gt;
+&lt;span class="n"&gt;Summary&lt;/span&gt; &lt;span class="k"&gt;for&lt;/span&gt; &lt;span class="n"&gt;research_data&lt;/span&gt;&lt;span class="o"&gt;/&lt;/span&gt;&lt;span class="n"&gt;experiment&lt;/span&gt;&lt;span class="o"&gt;/&lt;/span&gt;&lt;span class="n"&gt;decompiler&lt;/span&gt;&lt;span class="o"&gt;/&lt;/span&gt;&lt;span class="n"&gt;dumped_jar_dec&lt;/span&gt;&lt;span class="o"&gt;/&lt;/span&gt;&lt;span class="n"&gt;c&lt;/span&gt;&lt;span class="p"&gt;.&lt;/span&gt;&lt;span class="n"&gt;class&lt;/span&gt;&lt;span class="o"&gt;:&lt;/span&gt;
+        &lt;span class="n"&gt;Size&lt;/span&gt; &lt;span class="mh"&gt;0x0&lt;/span&gt;&lt;span class="o"&gt;:&lt;/span&gt;
+        &lt;span class="n"&gt;Constants&lt;/span&gt; &lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="n"&gt;size&lt;/span&gt;&lt;span class="o"&gt;:&lt;/span&gt; &lt;span class="mh"&gt;0x275&lt;/span&gt;&lt;span class="p"&gt;)&lt;/span&gt;&lt;span class="n"&gt;Count&lt;/span&gt;&lt;span class="o"&gt;:&lt;/span&gt; &lt;span class="mi"&gt;69&lt;/span&gt;&lt;span class="o"&gt;:&lt;/span&gt;
+        &lt;span class="n"&gt;Methods&lt;/span&gt; &lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="n"&gt;size&lt;/span&gt;&lt;span class="o"&gt;:&lt;/span&gt; &lt;span class="mh"&gt;0x24e&lt;/span&gt;&lt;span class="p"&gt;)&lt;/span&gt;&lt;span class="n"&gt;Count&lt;/span&gt;&lt;span class="o"&gt;:&lt;/span&gt; &lt;span class="mi"&gt;4&lt;/span&gt;&lt;span class="o"&gt;:&lt;/span&gt;
+        &lt;span class="n"&gt;Fields&lt;/span&gt; &lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="n"&gt;size&lt;/span&gt;&lt;span class="o"&gt;:&lt;/span&gt; &lt;span class="mh"&gt;0x12&lt;/span&gt;&lt;span class="p"&gt;)&lt;/span&gt;&lt;span class="n"&gt;Count&lt;/span&gt;&lt;span class="o"&gt;:&lt;/span&gt; &lt;span class="mi"&gt;2&lt;/span&gt;&lt;span class="o"&gt;:&lt;/span&gt;
+        &lt;span class="n"&gt;Attributes&lt;/span&gt; &lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="n"&gt;size&lt;/span&gt;&lt;span class="o"&gt;:&lt;/span&gt; &lt;span class="mh"&gt;0xa&lt;/span&gt;&lt;span class="p"&gt;)&lt;/span&gt;&lt;span class="n"&gt;Count&lt;/span&gt;&lt;span class="o"&gt;:&lt;/span&gt; &lt;span class="mi"&gt;1&lt;/span&gt;&lt;span class="o"&gt;:&lt;/span&gt;
+        &lt;span class="n"&gt;Interfaces&lt;/span&gt; &lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="n"&gt;size&lt;/span&gt;&lt;span class="o"&gt;:&lt;/span&gt; &lt;span class="mh"&gt;0x2&lt;/span&gt;&lt;span class="p"&gt;)&lt;/span&gt;&lt;span class="n"&gt;Count&lt;/span&gt;&lt;span class="o"&gt;:&lt;/span&gt; &lt;span class="mi"&gt;0&lt;/span&gt;&lt;span class="o"&gt;:&lt;/span&gt;
+&lt;/pre&gt;&lt;/div&gt;
+
+
+&lt;h2&gt;Enumerating Information Method and Field Information in the Class File&lt;/h2&gt;
+&lt;p&gt;Method and field information can quickly reveal what the class file does 
+by looking at typed fields, typed methods, and imports that the class file relies
+on.  This information can be used to assess what a function might be doing,
+what datatypes the parameters are, what references are used or methods are called,
+and even provide information related to exception handling.  More importantly,
+if the objective is to modify the class file, this exploratory information can 
+provide the appropriate offsets into the file so that those modifications can 
+be made.&lt;/p&gt;
+&lt;h3&gt;Java Prototypes&lt;/h3&gt;
+&lt;p&gt;In the below example, the second entry in the JAR file list is accessed, and 
+successfully recognized as a Java class file.  Rather than attempting to understand
+the disassembly, it always best to get the best overview.  Here, what we see 
+immediately is that the &lt;strong&gt;s&lt;/strong&gt; class has a &lt;strong&gt;call&lt;/strong&gt; method and then a &lt;strong&gt;tr_func&lt;/strong&gt;.
+Both of which are interesting for further information.&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span class="cp"&gt;[&lt;/span&gt;&lt;span class="mh"&gt;0x000002af&lt;/span&gt;&lt;span class="cp"&gt;]&lt;/span&gt;&amp;gt; java prototypes a
+import java.lang.Object;
+import java.lang.String;
+import c;
+import sun.misc.BASE64Decoder;
+import sun.misc.BASE64Encoder;
+import a;
+import java.lang.NumberFormatException;
+import &lt;span class="cp"&gt;[&lt;/span&gt;&lt;span class="nx"&gt;C&lt;/span&gt;&lt;span class="p"&gt;;&lt;/span&gt;
+
+&lt;span class="nb"&gt;class&lt;/span&gt; &lt;span class="nx"&gt;c&lt;/span&gt; &lt;span class="p"&gt;{&lt;/span&gt; &lt;span class="c1"&gt;// @0x0000&lt;/span&gt;
+
+    &lt;span class="c1"&gt;// Fields defined in the class&lt;/span&gt;
+    &lt;span class="k"&gt;public&lt;/span&gt; &lt;span class="nf"&gt;static&lt;/span&gt; &lt;span class="nb"&gt;boolean&lt;/span&gt; &lt;span class="nx"&gt;a&lt;/span&gt;&lt;span class="p"&gt;;&lt;/span&gt; &lt;span class="c1"&gt;// @0x0287&lt;/span&gt;
+    &lt;span class="k"&gt;private&lt;/span&gt; &lt;span class="nf"&gt;static&lt;/span&gt; &lt;span class="nx"&gt;final&lt;/span&gt; &lt;span class="nx"&gt;java.lang.String&lt;/span&gt; &lt;span class="nb"&gt;z&lt;/span&gt;&lt;span class="p"&gt;;&lt;/span&gt; &lt;span class="c1"&gt;// @0x028f&lt;/span&gt;
+
+    &lt;span class="c1"&gt;// Methods defined in the class&lt;/span&gt;
+    &lt;span class="k"&gt;public&lt;/span&gt; &lt;span class="nf"&gt;void&lt;/span&gt; &lt;span class="o"&gt;&amp;lt;&lt;/span&gt;&lt;span class="nb"&gt;init&lt;/span&gt;&lt;span class="o"&gt;&amp;gt;&lt;/span&gt;&lt;span class="p"&gt;();&lt;/span&gt; &lt;span class="c1"&gt;// @0x0299&lt;/span&gt;
+    &lt;span class="k"&gt;public&lt;/span&gt; &lt;span class="nf"&gt;static&lt;/span&gt; &lt;span class="nx"&gt;java.lang.String&lt;/span&gt; &lt;span class="nx"&gt;a&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="nx"&gt;java.lang.String&lt;/span&gt;&lt;span class="p"&gt;);&lt;/span&gt; &lt;span class="c1"&gt;// @0x02c4&lt;/span&gt;
+    &lt;span class="k"&gt;public&lt;/span&gt; &lt;span class="nf"&gt;static&lt;/span&gt; &lt;span class="nx"&gt;java.lang.String&lt;/span&gt; &lt;span class="nx"&gt;b&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="nx"&gt;java.lang.String&lt;/span&gt;&lt;span class="p"&gt;);&lt;/span&gt; &lt;span class="c1"&gt;// @0x02fc&lt;/span&gt;
+    &lt;span class="nx"&gt;static&lt;/span&gt; &lt;span class="bp"&gt;void&lt;/span&gt; &lt;span class="o"&gt;&amp;lt;&lt;/span&gt;&lt;span class="nx"&gt;clinit&lt;/span&gt;&lt;span class="o"&gt;&amp;gt;&lt;/span&gt;&lt;span class="p"&gt;();&lt;/span&gt; &lt;span class="c1"&gt;// @0x0395&lt;/span&gt;
+&lt;span class="p"&gt;}&lt;/span&gt;
+&lt;span class="err"&gt;[&lt;/span&gt;&lt;span class="mh"&gt;0x000002af&lt;/span&gt;&lt;span class="cp"&gt;]&lt;/span&gt;&amp;gt;
+&lt;/pre&gt;&lt;/div&gt;
+
+
+&lt;h3&gt;Java Method and Field Information&lt;/h3&gt;
+&lt;p&gt;The &lt;strong&gt;java m_info&lt;/strong&gt; and &lt;strong&gt;java f_info&lt;/strong&gt; will dump a summary of structure
+and attribute information that is contained in the method or field definition.&lt;/p&gt;
+&lt;p&gt;Below the file offset is set to &lt;strong&gt;0x312&lt;/strong&gt;, and then the summary is printed.&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span class="cp"&gt;[&lt;/span&gt;&lt;span class="mh"&gt;0x000002af&lt;/span&gt;&lt;span class="cp"&gt;]&lt;/span&gt;&amp;gt; s 0x312; java m_info s
+Method Summary Information:
+        File offset: 0x00000299 Access Flags: 1
+        Name Index: 24 (&lt;span class="nt"&gt;&amp;lt;init&amp;gt;&lt;/span&gt;)
+        Descriptor Index: 19 (()V)
+        Access Flags: 0x01 (public)
+        Method Attributes Count: 1
+        Method Attributes:
+Code Attribute information:
+   Attribute Offset: 0x000002a1
+   Attribute Name Index: 26 (Code)
+   Attribute length: 29, Attribute Count: 1
+          Max Stack: 1
+          Max Locals: 1
+          Code Length: 5
+          Code At Offset: 0x000002af
+Code Attribute Exception table information:
+          Exception table length: 0
+          Implicit Method Stack Frame: 
+Stack Map Frame Information
+        Tag Value = 0x00 Name: ImplicitStackFrame
+        Offset: 0x00000000
+        Local Variable Count = 0x0000
+        Stack Items Count = 0x0000
+        Local Variables:
+        Stack Items:
+Code Attribute Attributes information:
+          Code Attribute Attributes count: 1
+Line Number Table Attribute information:
+   Attribute Offset: 0x000002b8
+   Attribute Name Index: 27 (LineNumberTable)
+   Attribute length: 6
+   Line Number Attribute offset: 0x000002c0
+   Line Number Attribute start_pc: 0
+   Line Number Attribute line_number: 7
+&lt;/pre&gt;&lt;/div&gt;
+
+
+&lt;p&gt;Similarly, the field information can be printed with the &lt;strong&gt;java f_info s&lt;/strong&gt;&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span class="p"&gt;[&lt;/span&gt;&lt;span class="mh"&gt;0x000002af&lt;/span&gt;&lt;span class="p"&gt;]&lt;/span&gt;&lt;span class="o"&gt;&amp;gt;&lt;/span&gt; &lt;span class="n"&gt;java&lt;/span&gt; &lt;span class="n"&gt;f_info&lt;/span&gt; &lt;span class="n"&gt;s&lt;/span&gt;
+&lt;span class="n"&gt;Field&lt;/span&gt; &lt;span class="n"&gt;Summary&lt;/span&gt; &lt;span class="n"&gt;Information&lt;/span&gt;&lt;span class="o"&gt;:&lt;/span&gt;
+        &lt;span class="n"&gt;File&lt;/span&gt; &lt;span class="n"&gt;offset&lt;/span&gt;&lt;span class="o"&gt;:&lt;/span&gt; &lt;span class="mh"&gt;0x00000287&lt;/span&gt; &lt;span class="n"&gt;Access&lt;/span&gt; &lt;span class="n"&gt;Flags&lt;/span&gt;&lt;span class="o"&gt;:&lt;/span&gt; &lt;span class="mi"&gt;9&lt;/span&gt;
+        &lt;span class="n"&gt;Name&lt;/span&gt; &lt;span class="n"&gt;Index&lt;/span&gt;&lt;span class="o"&gt;:&lt;/span&gt; &lt;span class="mi"&gt;40&lt;/span&gt; &lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="n"&gt;a&lt;/span&gt;&lt;span class="p"&gt;)&lt;/span&gt;
+        &lt;span class="n"&gt;Descriptor&lt;/span&gt; &lt;span class="n"&gt;Index&lt;/span&gt;&lt;span class="o"&gt;:&lt;/span&gt; &lt;span class="mi"&gt;41&lt;/span&gt; &lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="n"&gt;Z&lt;/span&gt;&lt;span class="p"&gt;)&lt;/span&gt;
+        &lt;span class="n"&gt;Access&lt;/span&gt; &lt;span class="n"&gt;Flags&lt;/span&gt;&lt;span class="o"&gt;:&lt;/span&gt; &lt;span class="mh"&gt;0x09&lt;/span&gt; &lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="n"&gt;public&lt;/span&gt; &lt;span class="k"&gt;static&lt;/span&gt;&lt;span class="p"&gt;)&lt;/span&gt;
+        &lt;span class="n"&gt;Field&lt;/span&gt; &lt;span class="n"&gt;Attributes&lt;/span&gt; &lt;span class="n"&gt;Count&lt;/span&gt;&lt;span class="o"&gt;:&lt;/span&gt; &lt;span class="mi"&gt;0&lt;/span&gt;
+        &lt;span class="n"&gt;Field&lt;/span&gt; &lt;span class="n"&gt;Attributes&lt;/span&gt;&lt;span class="o"&gt;:&lt;/span&gt;
+&lt;/pre&gt;&lt;/div&gt;
+
+
+&lt;h3&gt;Enumerating References in the Code&lt;/h3&gt;
+&lt;p&gt;Currently, the Java class analysis does not annotate the field, method, or call
+in the disassembler code.  This issue  due 
+to some current development for a new &lt;em&gt;variable analysis&lt;/em&gt; and &lt;em&gt;code analysis&lt;/em&gt; 
+data store.  However, it is still possible to print the references that appear
+in code using the &lt;strong&gt;java lcr&lt;/strong&gt; command.  &lt;strong&gt;Note&lt;/strong&gt;, prior to listing the code
+references, an analysis of all the functions will need to take place using the 
+&lt;strong&gt;af&lt;/strong&gt; command.  After the method analysis is complete, the &lt;strong&gt;java lcr&lt;/strong&gt;
+will walk the basic blocks in the methods, and determine if it uses an instruction
+that has a follow-on reference.  Typically, these instructions are read or write to 
+class fields, call methods, or read constant values from the Constant Pool.&lt;/p&gt;
+&lt;p&gt;The results of this command will tell the analyst where the &lt;em&gt;address of the 
+reference&lt;/em&gt;, &lt;em&gt;operation&lt;/em&gt; (&lt;strong&gt;read&lt;/strong&gt;, &lt;strong&gt;write&lt;/strong&gt;, &lt;strong&gt;call&lt;/strong&gt;), &lt;em&gt;type&lt;/em&gt;, and 
+&lt;em&gt;type-specific&lt;/em&gt; information (e.g. &lt;strong&gt;constant value&lt;/strong&gt;, &lt;strong&gt;name&lt;/strong&gt;, &lt;strong&gt;descriptor&lt;/strong&gt;, 
+etc.).  Below is the output of the current class.&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span class="cp"&gt;[&lt;/span&gt;&lt;span class="mh"&gt;0x000002af&lt;/span&gt;&lt;span class="cp"&gt;]&lt;/span&gt;&amp;gt; af
+WARNING Analysis of sym.00000312 Incorrect: Code Length: 0x2e, Function size reported 0x2d
+Deadcode detected, setting code length to: 0x2e
+&lt;span class="cp"&gt;[&lt;/span&gt;&lt;span class="mh"&gt;0x000002af&lt;/span&gt;&lt;span class="cp"&gt;]&lt;/span&gt;&amp;gt; s 0x2af; java lcr `s`
+0x2b0 call special type: FUNCTION info: java/lang/Object.&lt;span class="nt"&gt;&amp;lt;init&amp;gt;&lt;/span&gt; ()V
+&lt;span class="cp"&gt;[&lt;/span&gt;&lt;span class="mh"&gt;0x000002af&lt;/span&gt;&lt;span class="cp"&gt;]&lt;/span&gt;&amp;gt; s 0x2da; java lcr `s`
+0x2de call special type: FUNCTION info: sun/misc/BASE64Encoder.&lt;span class="nt"&gt;&amp;lt;init&amp;gt;&lt;/span&gt; ()V
+0x2e2 read static type: FIELD info: Ljava/lang/String; c.z
+0x2e5 call virtual type: FUNCTION info: java/lang/String.getBytes (Ljava/lang/String;)&lt;span class="cp"&gt;[&lt;/span&gt;&lt;span class="nx"&gt;B&lt;/span&gt;
+&lt;span class="mh"&gt;0x2e8&lt;/span&gt; &lt;span class="nb"&gt;call&lt;/span&gt; &lt;span class="nx"&gt;virtual&lt;/span&gt; &lt;span class="k"&gt;type&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt; &lt;span class="nx"&gt;FUNCTION&lt;/span&gt; &lt;span class="nx"&gt;info&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt; &lt;span class="nx"&gt;sun&lt;/span&gt;&lt;span class="p"&gt;/&lt;/span&gt;&lt;span class="nx"&gt;misc&lt;/span&gt;&lt;span class="p"&gt;/&lt;/span&gt;&lt;span class="nx"&gt;BASE64Encoder.encode&lt;/span&gt; &lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="err"&gt;[&lt;/span&gt;&lt;span class="nx"&gt;B&lt;/span&gt;&lt;span class="p"&gt;)&lt;/span&gt;&lt;span class="nx"&gt;Ljava&lt;/span&gt;&lt;span class="p"&gt;/&lt;/span&gt;&lt;span class="nb"&gt;lang&lt;/span&gt;&lt;span class="p"&gt;/&lt;/span&gt;&lt;span class="nb"&gt;String&lt;/span&gt;&lt;span class="p"&gt;;&lt;/span&gt;
+&lt;span class="err"&gt;[&lt;/span&gt;&lt;span class="mh"&gt;0x000002da&lt;/span&gt;&lt;span class="cp"&gt;]&lt;/span&gt;&amp;gt; s 0x312; java lcr `s`
+0x312 read static type: FIELD info: Z c.a
+0x31e call special type: FUNCTION info: sun/misc/BASE64Decoder.&lt;span class="nt"&gt;&amp;lt;init&amp;gt;&lt;/span&gt; ()V
+0x322 call virtual type: FUNCTION info: sun/misc/BASE64Decoder.decodeBuffer (Ljava/lang/String;)&lt;span class="cp"&gt;[&lt;/span&gt;&lt;span class="nx"&gt;B&lt;/span&gt;
+&lt;span class="mh"&gt;0x325&lt;/span&gt; &lt;span class="nb"&gt;call&lt;/span&gt; &lt;span class="nx"&gt;special&lt;/span&gt; &lt;span class="k"&gt;type&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt; &lt;span class="nx"&gt;FUNCTION&lt;/span&gt; &lt;span class="nx"&gt;info&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt; &lt;span class="nb"&gt;java&lt;/span&gt;&lt;span class="p"&gt;/&lt;/span&gt;&lt;span class="nb"&gt;lang&lt;/span&gt;&lt;span class="p"&gt;/&lt;/span&gt;&lt;span class="nx"&gt;String.&lt;/span&gt;&lt;span class="o"&gt;&amp;lt;&lt;/span&gt;&lt;span class="nb"&gt;init&lt;/span&gt;&lt;span class="o"&gt;&amp;gt;&lt;/span&gt; &lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="err"&gt;[&lt;/span&gt;&lt;span class="nx"&gt;B&lt;/span&gt;&lt;span class="p"&gt;)&lt;/span&gt;&lt;span class="nx"&gt;V&lt;/span&gt;
+&lt;span class="mh"&gt;0x328&lt;/span&gt; &lt;span class="nb"&gt;read&lt;/span&gt; &lt;span class="nx"&gt;static&lt;/span&gt; &lt;span class="k"&gt;type&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt; &lt;span class="nb"&gt;FIELD&lt;/span&gt; &lt;span class="nx"&gt;info&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt; &lt;span class="nx"&gt;I&lt;/span&gt; &lt;span class="nx"&gt;a.i&lt;/span&gt;
+&lt;span class="mh"&gt;0x33c&lt;/span&gt; &lt;span class="nb"&gt;write&lt;/span&gt; &lt;span class="nx"&gt;static&lt;/span&gt; &lt;span class="k"&gt;type&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt; &lt;span class="nb"&gt;FIELD&lt;/span&gt; &lt;span class="nx"&gt;info&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt; &lt;span class="nb"&gt;Z&lt;/span&gt; &lt;span class="nx"&gt;c.a&lt;/span&gt;
+&lt;span class="err"&gt;[&lt;/span&gt;&lt;span class="mh"&gt;0x00000312&lt;/span&gt;&lt;span class="cp"&gt;]&lt;/span&gt;&amp;gt; s 0x3ab; java lcr `s`
+0x3ab read constant type: String info: &amp;quot;\x05rW
+0x3b9 call virtual type: FUNCTION info: java/lang/String.toCharArray ()&lt;span class="cp"&gt;[&lt;/span&gt;&lt;span class="nx"&gt;C&lt;/span&gt;
+&lt;span class="mh"&gt;0x41c&lt;/span&gt; &lt;span class="nb"&gt;call&lt;/span&gt; &lt;span class="nx"&gt;special&lt;/span&gt; &lt;span class="k"&gt;type&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt; &lt;span class="nx"&gt;FUNCTION&lt;/span&gt; &lt;span class="nx"&gt;info&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt; &lt;span class="nb"&gt;java&lt;/span&gt;&lt;span class="p"&gt;/&lt;/span&gt;&lt;span class="nb"&gt;lang&lt;/span&gt;&lt;span class="p"&gt;/&lt;/span&gt;&lt;span class="nx"&gt;String.&lt;/span&gt;&lt;span class="o"&gt;&amp;lt;&lt;/span&gt;&lt;span class="nb"&gt;init&lt;/span&gt;&lt;span class="o"&gt;&amp;gt;&lt;/span&gt; &lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="err"&gt;[&lt;/span&gt;&lt;span class="nx"&gt;C&lt;/span&gt;&lt;span class="p"&gt;)&lt;/span&gt;&lt;span class="nx"&gt;V&lt;/span&gt;
+&lt;span class="mh"&gt;0x41f&lt;/span&gt; &lt;span class="nb"&gt;call&lt;/span&gt; &lt;span class="nx"&gt;virtual&lt;/span&gt; &lt;span class="k"&gt;type&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt; &lt;span class="nx"&gt;FUNCTION&lt;/span&gt; &lt;span class="nx"&gt;info&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt; &lt;span class="nb"&gt;java&lt;/span&gt;&lt;span class="p"&gt;/&lt;/span&gt;&lt;span class="nb"&gt;lang&lt;/span&gt;&lt;span class="p"&gt;/&lt;/span&gt;&lt;span class="nx"&gt;String.intern&lt;/span&gt; &lt;span class="p"&gt;()&lt;/span&gt;&lt;span class="nx"&gt;Ljava&lt;/span&gt;&lt;span class="p"&gt;/&lt;/span&gt;&lt;span class="nb"&gt;lang&lt;/span&gt;&lt;span class="p"&gt;/&lt;/span&gt;&lt;span class="nb"&gt;String&lt;/span&gt;&lt;span class="p"&gt;;&lt;/span&gt;
+&lt;span class="mh"&gt;0x3b2&lt;/span&gt; &lt;span class="nb"&gt;write&lt;/span&gt; &lt;span class="nx"&gt;static&lt;/span&gt; &lt;span class="k"&gt;type&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt; &lt;span class="nb"&gt;FIELD&lt;/span&gt; &lt;span class="nx"&gt;info&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt; &lt;span class="nx"&gt;Ljava&lt;/span&gt;&lt;span class="p"&gt;/&lt;/span&gt;&lt;span class="nb"&gt;lang&lt;/span&gt;&lt;span class="p"&gt;/&lt;/span&gt;&lt;span class="nb"&gt;String&lt;/span&gt;&lt;span class="p"&gt;;&lt;/span&gt; &lt;span class="nx"&gt;c.z&lt;/span&gt;
+&lt;/pre&gt;&lt;/div&gt;
+
+
+&lt;h3&gt;Looking at a Method Exception Handling Table&lt;/h3&gt;
+&lt;p&gt;On some occassions, an analyst might be interested in looking at the 
+exception handler table for a particular method.  This table basically
+holds the span of code covered by an exception with &lt;strong&gt;start&lt;/strong&gt; and &lt;strong&gt;end&lt;/strong&gt;, 
+and then has a pointer to the code that will handle the exception.  The
+exception is specified with a reference back into the Constant Pool.&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span class="p"&gt;[&lt;/span&gt;&lt;span class="mh"&gt;0x00000312&lt;/span&gt;&lt;span class="p"&gt;]&lt;/span&gt;&lt;span class="o"&gt;&amp;gt;&lt;/span&gt; &lt;span class="n"&gt;java&lt;/span&gt; &lt;span class="n"&gt;exc&lt;/span&gt; &lt;span class="mh"&gt;0x312&lt;/span&gt;
+ &lt;span class="n"&gt;Exception&lt;/span&gt; &lt;span class="n"&gt;table&lt;/span&gt; &lt;span class="k"&gt;for&lt;/span&gt; &lt;span class="n"&gt;b&lt;/span&gt; &lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="mi"&gt;2&lt;/span&gt; &lt;span class="n"&gt;entries&lt;/span&gt;&lt;span class="p"&gt;)&lt;/span&gt; &lt;span class="err"&gt;@&lt;/span&gt; &lt;span class="mh"&gt;0x312&lt;/span&gt;&lt;span class="o"&gt;:&lt;/span&gt;
+        &lt;span class="n"&gt;Catch&lt;/span&gt; &lt;span class="n"&gt;Type&lt;/span&gt;&lt;span class="o"&gt;:&lt;/span&gt; &lt;span class="mi"&gt;49&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt; &lt;span class="n"&gt;java&lt;/span&gt;&lt;span class="o"&gt;/&lt;/span&gt;&lt;span class="n"&gt;lang&lt;/span&gt;&lt;span class="o"&gt;/&lt;/span&gt;&lt;span class="n"&gt;NumberFormatException&lt;/span&gt; &lt;span class="err"&gt;@&lt;/span&gt; &lt;span class="mh"&gt;0x348&lt;/span&gt;
+                &lt;span class="n"&gt;Start&lt;/span&gt; &lt;span class="n"&gt;PC&lt;/span&gt;&lt;span class="o"&gt;:&lt;/span&gt; &lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="mh"&gt;0x1c&lt;/span&gt;&lt;span class="p"&gt;)&lt;/span&gt; &lt;span class="mh"&gt;0x32e&lt;/span&gt; &lt;span class="err"&gt;@&lt;/span&gt; &lt;span class="mh"&gt;0x342&lt;/span&gt;
+                &lt;span class="n"&gt;End&lt;/span&gt; &lt;span class="n"&gt;PC&lt;/span&gt;&lt;span class="o"&gt;:&lt;/span&gt; &lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="mh"&gt;0x28&lt;/span&gt;&lt;span class="p"&gt;)&lt;/span&gt; &lt;span class="mh"&gt;0x33a&lt;/span&gt; &lt;span class="mh"&gt;0x344&lt;/span&gt;
+                &lt;span class="n"&gt;Handler&lt;/span&gt; &lt;span class="n"&gt;PC&lt;/span&gt;&lt;span class="o"&gt;:&lt;/span&gt; &lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="mh"&gt;0x28&lt;/span&gt;&lt;span class="p"&gt;)&lt;/span&gt; &lt;span class="mh"&gt;0x33a&lt;/span&gt; &lt;span class="mh"&gt;0x346&lt;/span&gt;
+        &lt;span class="n"&gt;Catch&lt;/span&gt; &lt;span class="n"&gt;Type&lt;/span&gt;&lt;span class="o"&gt;:&lt;/span&gt; &lt;span class="mi"&gt;49&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt; &lt;span class="n"&gt;java&lt;/span&gt;&lt;span class="o"&gt;/&lt;/span&gt;&lt;span class="n"&gt;lang&lt;/span&gt;&lt;span class="o"&gt;/&lt;/span&gt;&lt;span class="n"&gt;NumberFormatException&lt;/span&gt; &lt;span class="err"&gt;@&lt;/span&gt; &lt;span class="mh"&gt;0x350&lt;/span&gt;
+                &lt;span class="n"&gt;Start&lt;/span&gt; &lt;span class="n"&gt;PC&lt;/span&gt;&lt;span class="o"&gt;:&lt;/span&gt; &lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="mh"&gt;0x4&lt;/span&gt;&lt;span class="p"&gt;)&lt;/span&gt; &lt;span class="mh"&gt;0x316&lt;/span&gt; &lt;span class="err"&gt;@&lt;/span&gt; &lt;span class="mh"&gt;0x34a&lt;/span&gt;
+                &lt;span class="n"&gt;End&lt;/span&gt; &lt;span class="n"&gt;PC&lt;/span&gt;&lt;span class="o"&gt;:&lt;/span&gt; &lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="mh"&gt;0x20&lt;/span&gt;&lt;span class="p"&gt;)&lt;/span&gt; &lt;span class="mh"&gt;0x332&lt;/span&gt; &lt;span class="mh"&gt;0x34c&lt;/span&gt;
+                &lt;span class="n"&gt;Handler&lt;/span&gt; &lt;span class="n"&gt;PC&lt;/span&gt;&lt;span class="o"&gt;:&lt;/span&gt; &lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="mh"&gt;0x23&lt;/span&gt;&lt;span class="p"&gt;)&lt;/span&gt; &lt;span class="mh"&gt;0x335&lt;/span&gt; &lt;span class="mh"&gt;0x34e&lt;/span&gt;
+&lt;/pre&gt;&lt;/div&gt;
+
+
+&lt;h3&gt;Java Constant Pool&lt;/h3&gt;
+&lt;p&gt;One of the major benefits of Java is the separation of code and data.  There are
+several different sections in the the Java class file which include the class 
+information.  One of the most important sections is the Constant Pool.&lt;br /&gt;
+The &lt;strong&gt;java resolve_cp&lt;/strong&gt; will give us the power to print all the information 
+related to a specific entry, dump all the objects, or print information related
+to its address or type.  The most information intensive command switch is 
+&lt;strong&gt;java resolv_cp d&lt;/strong&gt;, which dumps the entire contents of the Constant Pool.&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span class="cp"&gt;[&lt;/span&gt;&lt;span class="mh"&gt;0x000002af&lt;/span&gt;&lt;span class="cp"&gt;]&lt;/span&gt;&amp;gt; java resolve_cp d
+String ConstantPool Type (1)    Offset: 0x0000000a  String Index = 29
+ClassRef ConstantPool Type (2)  Offset: 0x0000000d  Name Index = 34
+ClassRef ConstantPool Type (3)  Offset: 0x00000010  Name Index = 35
+ClassRef ConstantPool Type (4)  Offset: 0x00000013  Name Index = 36
+ClassRef ConstantPool Type (5)  Offset: 0x00000016  Name Index = 37
+ClassRef ConstantPool Type (6)  Offset: 0x00000019  Name Index = 38
+MethodRef ConstantPool Type (7)     Offset: 0x0000001c  Class Index = 2
+    Name and type Index = 14
+MethodRef ConstantPool Type (8)     Offset: 0x00000021  Class Index = 3
+    Name and type Index = 15
+MethodRef ConstantPool Type (9)     Offset: 0x00000026  Class Index = 3
+    Name and type Index = 18
+MethodRef ConstantPool Type (10)    Offset: 0x0000002b  Class Index = 5
+    Name and type Index = 14
+MethodRef ConstantPool Type (11)    Offset: 0x00000030  Class Index = 5
+    Name and type Index = 16
+MethodRef ConstantPool Type (12)    Offset: 0x00000035  Class Index = 6
+    Name and type Index = 14
+MethodRef ConstantPool Type (13)    Offset: 0x0000003a  Class Index = 6
+    Name and type Index = 17
+Name_And_Type ConstantPool Type (14)    Offset: 0x0000003f  name_idx = (24)
+    descriptor_idx = (19)
+Name_And_Type ConstantPool Type (15)    Offset: 0x00000044  name_idx = (24)
+    descriptor_idx = (23)
+Name_And_Type ConstantPool Type (16)    Offset: 0x00000049  name_idx = (31)
+    descriptor_idx = (21)
+Name_And_Type ConstantPool Type (17)    Offset: 0x0000004e  name_idx = (32)
+    descriptor_idx = (22)
+Name_And_Type ConstantPool Type (18)    Offset: 0x00000053  name_idx = (33)
+    descriptor_idx = (21)
+UTF8 ConstantPool Type (19)     Offset: 0x00000058  length = 3
+    utf8 = ()V
+UTF8 ConstantPool Type (20)     Offset: 0x0000005e  length = 38
+    utf8 = (Ljava/lang/String;)Ljava/lang/String;
+UTF8 ConstantPool Type (21)     Offset: 0x00000087  length = 22
+    utf8 = (Ljava/lang/String;)&lt;span class="cp"&gt;[&lt;/span&gt;&lt;span class="nx"&gt;B&lt;/span&gt;
+&lt;span class="nx"&gt;UTF8&lt;/span&gt; &lt;span class="nx"&gt;ConstantPool&lt;/span&gt; &lt;span class="k"&gt;Type&lt;/span&gt; &lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="mi"&gt;22&lt;/span&gt;&lt;span class="p"&gt;)&lt;/span&gt;     &lt;span class="nx"&gt;Offset&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt; &lt;span class="mh"&gt;0x000000a0&lt;/span&gt;  &lt;span class="n"&gt;length&lt;/span&gt; &lt;span class="o"&gt;=&lt;/span&gt; &lt;span class="mi"&gt;22&lt;/span&gt;
+    &lt;span class="n"&gt;utf8&lt;/span&gt; &lt;span class="o"&gt;=&lt;/span&gt; &lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="err"&gt;[&lt;/span&gt;&lt;span class="nx"&gt;B&lt;/span&gt;&lt;span class="p"&gt;)&lt;/span&gt;&lt;span class="nx"&gt;Ljava&lt;/span&gt;&lt;span class="p"&gt;/&lt;/span&gt;&lt;span class="nb"&gt;lang&lt;/span&gt;&lt;span class="p"&gt;/&lt;/span&gt;&lt;span class="nb"&gt;String&lt;/span&gt;&lt;span class="p"&gt;;&lt;/span&gt;
+&lt;span class="nx"&gt;UTF8&lt;/span&gt; &lt;span class="nx"&gt;ConstantPool&lt;/span&gt; &lt;span class="k"&gt;Type&lt;/span&gt; &lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="mi"&gt;23&lt;/span&gt;&lt;span class="p"&gt;)&lt;/span&gt;     &lt;span class="nx"&gt;Offset&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt; &lt;span class="mh"&gt;0x000000b9&lt;/span&gt;  &lt;span class="n"&gt;length&lt;/span&gt; &lt;span class="o"&gt;=&lt;/span&gt; &lt;span class="mi"&gt;5&lt;/span&gt;
+    &lt;span class="n"&gt;utf8&lt;/span&gt; &lt;span class="o"&gt;=&lt;/span&gt; &lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="err"&gt;[&lt;/span&gt;&lt;span class="nx"&gt;B&lt;/span&gt;&lt;span class="p"&gt;)&lt;/span&gt;&lt;span class="nx"&gt;V&lt;/span&gt;
+&lt;span class="nx"&gt;UTF8&lt;/span&gt; &lt;span class="nx"&gt;ConstantPool&lt;/span&gt; &lt;span class="k"&gt;Type&lt;/span&gt; &lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="mi"&gt;24&lt;/span&gt;&lt;span class="p"&gt;)&lt;/span&gt;     &lt;span class="nx"&gt;Offset&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt; &lt;span class="mh"&gt;0x000000c1&lt;/span&gt;  &lt;span class="n"&gt;length&lt;/span&gt; &lt;span class="o"&gt;=&lt;/span&gt; &lt;span class="mi"&gt;6&lt;/span&gt;
+    &lt;span class="n"&gt;utf8&lt;/span&gt; &lt;span class="o"&gt;=&lt;/span&gt; &lt;span class="o"&gt;&amp;lt;&lt;/span&gt;&lt;span class="nb"&gt;init&lt;/span&gt;&lt;span class="o"&gt;&amp;gt;&lt;/span&gt;
+&lt;span class="o"&gt;&amp;lt;&lt;/span&gt;&lt;span class="nx"&gt;snip&lt;/span&gt;&lt;span class="o"&gt;&amp;gt;&lt;/span&gt;
+&lt;/pre&gt;&lt;/div&gt;
+
+
+&lt;p&gt;As previously mentioned, this is alot of output to handle, so 
+there is another command that just provides an overview of the 
+CP Object is &lt;strong&gt;java resolv_cp g&lt;/strong&gt;, which provides the objects 
+&lt;em&gt;index&lt;/em&gt; value in the array, the &lt;em&gt;type&lt;/em&gt; (on the RHS of the equal sign), 
+and the &lt;em&gt;offset&lt;/em&gt;.  Note that the CP Object at &lt;strong&gt;index = 0&lt;/strong&gt; is 
+always considered a null type.  Below is the output
+of the summarized CP Object information.  After executing this 
+command it can then be possible to query a specific index to for 
+more information like its value. &lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span class="cp"&gt;[&lt;/span&gt;&lt;span class="err"&gt;[&lt;/span&gt;&lt;span class="mh"&gt;0x000002af&lt;/span&gt;&lt;span class="cp"&gt;]&lt;/span&gt;&amp;gt; java resolve_cp g
+CP_OBJ Type 1 =  String @ 0xa
+CP_OBJ Type 2 =  Class @ 0xd
+CP_OBJ Type 3 =  Class @ 0x10
+CP_OBJ Type 4 =  Class @ 0x13
+CP_OBJ Type 5 =  Class @ 0x16
+CP_OBJ Type 6 =  Class @ 0x19
+CP_OBJ Type 7 =  MethodRef @ 0x1c
+CP_OBJ Type 8 =  MethodRef @ 0x21
+CP_OBJ Type 9 =  MethodRef @ 0x26
+CP_OBJ Type 10 =  MethodRef @ 0x2b
+CP_OBJ Type 11 =  MethodRef @ 0x30
+CP_OBJ Type 12 =  MethodRef @ 0x35
+CP_OBJ Type 13 =  MethodRef @ 0x3a
+CP_OBJ Type 14 =  NameAndType @ 0x3f
+CP_OBJ Type 15 =  NameAndType @ 0x44
+CP_OBJ Type 16 =  NameAndType @ 0x49
+CP_OBJ Type 17 =  NameAndType @ 0x4e
+CP_OBJ Type 18 =  NameAndType @ 0x53
+CP_OBJ Type 19 =  Utf8 @ 0x58
+CP_OBJ Type 20 =  Utf8 @ 0x5e
+CP_OBJ Type 21 =  Utf8 @ 0x87
+CP_OBJ Type 22 =  Utf8 @ 0xa0
+CP_OBJ Type 23 =  Utf8 @ 0xb9
+CP_OBJ Type 24 =  Utf8 @ 0xc1
+&lt;span class="nt"&gt;&amp;lt;snip&amp;gt;&lt;/span&gt;
+&lt;/pre&gt;&lt;/div&gt;
+
+
+&lt;p&gt;Below are some examples of the &lt;strong&gt;summary&lt;/strong&gt;, &lt;strong&gt;type&lt;/strong&gt;, and &lt;strong&gt;address&lt;/strong&gt; switches.&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span class="p"&gt;[&lt;/span&gt;&lt;span class="mh"&gt;0x00000312&lt;/span&gt;&lt;span class="p"&gt;]&lt;/span&gt;&lt;span class="o"&gt;&amp;gt;&lt;/span&gt; &lt;span class="n"&gt;java&lt;/span&gt; &lt;span class="n"&gt;resolve_cp&lt;/span&gt; &lt;span class="n"&gt;s&lt;/span&gt; &lt;span class="mi"&gt;10&lt;/span&gt;
+&lt;span class="n"&gt;MethodRef&lt;/span&gt; &lt;span class="n"&gt;ConstantPool&lt;/span&gt; &lt;span class="n"&gt;Type&lt;/span&gt; &lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="mi"&gt;10&lt;/span&gt;&lt;span class="p"&gt;)&lt;/span&gt;        &lt;span class="n"&gt;Offset&lt;/span&gt;&lt;span class="o"&gt;:&lt;/span&gt; &lt;span class="mh"&gt;0x0000002b&lt;/span&gt;      &lt;span class="n"&gt;Class&lt;/span&gt; &lt;span class="n"&gt;Index&lt;/span&gt; &lt;span class="o"&gt;=&lt;/span&gt; &lt;span class="mi"&gt;5&lt;/span&gt;
+        &lt;span class="n"&gt;Name&lt;/span&gt; &lt;span class="n"&gt;and&lt;/span&gt; &lt;span class="n"&gt;type&lt;/span&gt; &lt;span class="n"&gt;Index&lt;/span&gt; &lt;span class="o"&gt;=&lt;/span&gt; &lt;span class="mi"&gt;14&lt;/span&gt;
+&lt;span class="p"&gt;[&lt;/span&gt;&lt;span class="mh"&gt;0x00000312&lt;/span&gt;&lt;span class="p"&gt;]&lt;/span&gt;&lt;span class="o"&gt;&amp;gt;&lt;/span&gt; &lt;span class="n"&gt;java&lt;/span&gt; &lt;span class="n"&gt;resolve_cp&lt;/span&gt; &lt;span class="n"&gt;t&lt;/span&gt; &lt;span class="mi"&gt;10&lt;/span&gt;
+&lt;span class="n"&gt;MethodRef&lt;/span&gt;
+&lt;span class="p"&gt;[&lt;/span&gt;&lt;span class="mh"&gt;0x00000312&lt;/span&gt;&lt;span class="p"&gt;]&lt;/span&gt;&lt;span class="o"&gt;&amp;gt;&lt;/span&gt; &lt;span class="n"&gt;java&lt;/span&gt; &lt;span class="n"&gt;resolve_cp&lt;/span&gt; &lt;span class="n"&gt;a&lt;/span&gt; &lt;span class="mi"&gt;10&lt;/span&gt;
+&lt;span class="mh"&gt;0x2b&lt;/span&gt;
+&lt;/pre&gt;&lt;/div&gt;
+
+
+&lt;h3&gt;Looking for Specific Values in the Constant Pool&lt;/h3&gt;
+&lt;p&gt;Under some circumstances it might be necessary to look specific
+values in the Constant Pool. For
+instance, if an analyst is looking for a specific value like
+&lt;strong&gt;java/lang/String&lt;/strong&gt;, then an analyst can use the 
+&lt;strong&gt;java find_cp_value&lt;/strong&gt;.  Currently the whole value need to 
+be a correct match, but this is still a good way to look for 
+unique strings in the class file.&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span class="p"&gt;[&lt;/span&gt;&lt;span class="mh"&gt;0x00000312&lt;/span&gt;&lt;span class="p"&gt;]&lt;/span&gt;&lt;span class="o"&gt;&amp;gt;&lt;/span&gt; &lt;span class="n"&gt;java&lt;/span&gt; &lt;span class="n"&gt;find_cp_value&lt;/span&gt; &lt;span class="n"&gt;s&lt;/span&gt; &lt;span class="n"&gt;java&lt;/span&gt;&lt;span class="o"&gt;/&lt;/span&gt;&lt;span class="n"&gt;lang&lt;/span&gt;&lt;span class="o"&gt;/&lt;/span&gt;&lt;span class="n"&gt;String&lt;/span&gt;
+&lt;span class="nl"&gt;Offset:&lt;/span&gt; &lt;span class="mh"&gt;0x13b&lt;/span&gt; &lt;span class="n"&gt;idx&lt;/span&gt;&lt;span class="o"&gt;:&lt;/span&gt; &lt;span class="mi"&gt;35&lt;/span&gt;
+&lt;/pre&gt;&lt;/div&gt;
+
+
+&lt;h2&gt;Conclusion&lt;/h2&gt;
+&lt;p&gt;The objective of this post was to walk through the Radare features
+that allow for the examination of code artifacts in a Java class file.
+Specifically, we introduced tools that can be used to dump the contents of
+a class file's CP pool and extract pertinent information from a method. In 
+some of the follow-on posts, techniques that can be used for &lt;em&gt;hooking&lt;/em&gt;
+Java methods will be explained during the static analysis of the class,
+and it allows for the interception of the normal execution such that
+a class, or its fields and/or methods can be examined at run-time.  The 
+technique is akin to Aspect Oriented Programming, but it does not require
+decompilation to source code.&lt;/p&gt;&lt;script type= "text/javascript"&gt;
+    if (!document.getElementById('mathjaxscript_pelican_#%@#$@#')) {
+        var mathjaxscript = document.createElement('script');
+        mathjaxscript.id = 'mathjaxscript_pelican_#%@#$@#';
+        mathjaxscript.type = 'text/javascript';
+        mathjaxscript.src = 'https:' == document.location.protocol
+                ? 'https://c328740.ssl.cf1.rackcdn.com/mathjax/latest/MathJax.js?config=TeX-AMS-MML_HTMLorMML'
+                : 'http://cdn.mathjax.org/mathjax/latest/MathJax.js?config=TeX-AMS-MML_HTMLorMML';
+        mathjaxscript[(window.opera ? "innerHTML" : "text")] =
+            "MathJax.Hub.Config({" +
+            "    config: ['MMLorHTML.js']," +
+            "    TeX: { extensions: ['AMSmath.js','AMSsymbols.js','noErrors.js','noUndefined.js'], equationNumbers: { autoNumber: 'AMS' } }," +
+            "    jax: ['input/TeX','input/MathML','output/HTML-CSS']," +
+            "    extensions: ['tex2jax.js','mml2jax.js','MathMenu.js','MathZoom.js']," +
+            "    displayAlign: 'center'," +
+            "    displayIndent: '0em'," +
+            "    showMathMenu: true," +
+            "    tex2jax: { " +
+            "        inlineMath: [ ['$','$'] ], " +
+            "        displayMath: [ ['$$','$$'] ]," +
+            "        processEscapes: true," +
+            "        preview: 'TeX'," +
+            "    }, " +
+            "    'HTML-CSS': { " +
+            "        styles: { '.MathJax_Display, .MathJax .mo, .MathJax .mi, .MathJax .mn': {color: 'black ! important'} }" +
+            "    } " +
+            "}); ";
+        (document.body || document.getElementsByTagName('head')[0]).appendChild(mathjaxscript);
+    }
+&lt;/script&gt;
+</summary><category term="radare"></category><category term="hacking"></category><category term="reverse engineering"></category><category term="java"></category><category term="coding"></category><category term="frameworks"></category></entry><entry><title>Introduction to Radare Java Reverse Engineering</title><link href="http://dso.thecoverofnight.com/posts/2014/04/radare-java-intro/" rel="alternate"></link><updated>2014-04-09T00:00:00-05:00</updated><author><name>Adam Pridgen</name></author><id>tag:dso.thecoverofnight.com,2014-04-09:posts/2014/04/radare-java-intro/</id><summary type="html">&lt;h2&gt;0. Introduction&lt;/h2&gt;
 &lt;p&gt;Radare is a reverse engineering framework that was built to support a command line hacker's needs. The frame work supports a number of different architectures and binary formats, which range from esoteric languages like BrainFuck to more common binary formats like MS-DOS Portable Executables (PE) or the Executable Linker Format (ELF).  In the past Radare has had limited support for Java reverse engineering, but this support provided only a minimal amount of information like disassembly, symbols, and import information.  The Java support has recently been updated and set of new features were added to Radare to help facilitate the analysis of Java class and Java Archive (JAR) file formats.&lt;/p&gt;
 &lt;p&gt;The focus of this post is to introduce some of these new features in addition to providing a basic walk-through for using Radare as a reverse engineering tool againt a ZIP archive and Java class files.  Typically, Java can be decompiled using tools like JD-GUI, JAD, JODE, CFR, etc., but these tools run into limitations when they are used against malicious or intentionally obfuscated code.  The purpose of these Radare extensions is to give malware analysts and reverse engineers a set of tools that can be used  to analyze Java based malware.  &lt;/p&gt;
 &lt;p&gt;In general, Java malware is fairly easy to identify and classify based on the code, import libraries, and the methods used by those imports, but when an analyst is asked to enumerate the functionality or explain what it does, they could be left in the dark.  Before the commencement of this project, there were a limited set of tools and those tools were typically written in Java.  Its not to say tools written in Java are less effective, but rather these tools take advantage of implicit assumptions that are implicit if the code comes from a considerate compiler and is not obfuscated.&lt;/p&gt;
@@ -57,7 +405,7 @@
 
 &lt;p&gt;Open an empty archive and write a hexlified string with &lt;strong&gt;wx&lt;/strong&gt;:&lt;/p&gt;
 &lt;div class="highlight"&gt;&lt;pre&gt;&lt;span class="err"&gt;$&lt;/span&gt; &lt;span class="n"&gt;r2&lt;/span&gt; &lt;span class="o"&gt;-&lt;/span&gt;&lt;span class="n"&gt;w&lt;/span&gt; &lt;span class="n"&gt;example&lt;/span&gt;&lt;span class="p"&gt;.&lt;/span&gt;&lt;span class="n"&gt;zip&lt;/span&gt;
-&lt;span class="p"&gt;[&lt;/span&gt;&lt;span class="mh"&gt;0x00000000&lt;/span&gt;&lt;span class="p"&gt;]&lt;/span&gt;&lt;span class="o"&gt;&amp;gt;&lt;/span&gt; &lt;span class="n"&gt;wx&lt;/span&gt; &lt;span class="mi"&gt;504&lt;/span&gt;&lt;span class="n"&gt;b0304140000000800ce9a5242390493e76a050000e009000015001c00616e79706b672f41747461636b65722e636c6173735554090003d4d32251d4d3225175780b000104e803000004e80300007d555b77135514fe4e9276d2617a4be90d5a28a0a51724220a42b1a62d548a498b04a8a52a4e93d376e83413261368f0ae88f7cb3fd0e50bafa06b059728cb677f892f3eeb722dc4ef4cd234a585ac9533e7ecb3bf7df9f6de337ffcf7cb3d0007f1ad8ebd9856cbab61cce8e8c5853a2eb31a5ed3518be920c48defd5ee750d6fd4a0f44bebb8883735983ab6634e4707521ac61538ad4186311fc642188b3a7a6069b8a4e188d259d260eb58464683a3a31bd36164355c0ec3d590d3b11b9e92e6d57245c3550d2b02fa45dbcc79a74dd75c1688c42f9957cca86d6616a249cfb5320b4302b5c7ac8ce50d0b04fbfacf0b84c69cb414688c5b1939995f9e93ee5973ce960aeca44cfbbce95aea5c1686bc452b27d01c373385ecd24274c4f3ccd492746937a4cc0a086ab556f93db1929259cf7232541116ff1302018b4a3d554a13194fba6e3eebc9f43a7d8751cece8e729712685a759a288c3999f90215ea93ca7dc2ccfae1b104e49c2c0b8453ae343d995021f7f52b0b0115773930cba1c76cde2327d25c56b1f399263573f9f979e952d9473844ecac20460b9e1c715db33095f7d6b03eef0eeb41ea2ba1e7341404b405c942788b025bfbfa37ab4468d9b432026d7db31b6ffdd298ee02edb66c72cd0c8fa5ec7221f5a493775372dc5215aa5f2dc97e053230804103073048736999f30c5cc35b06fad02fd0b09e4f036fe31dbadba4761ade35f01ede17d8f1f8a219f8001f1af808d70dc430c2be2afb883bb65d18b3994e5dda8925ccd882c5928a98000c7c8c1bd45cb33cc61ece19f8049fb2ea6be2a9b94b32e569f8ccc0e7f842a0fbb1a561b559803332e7c4143b23b1dcaabce9613a05daa32bd184b9246349673926c7f399fd29db8ce572ab74acef1803c7f1a581aff0b5816faab35ce59ed3e3c3cc6cd6965e74c47f54db9aaa302660f87dc281959e42f6f66dd20d9b75c0966bce94edd84e6e51cddd4035cc2730ee98694e667ffca1120cad63e0ec62a9f76b72b69459352ea754ef8519946f8551afeb5e5f48130dab0a2537029d1bd5ca1170145c99b5cd14dbf3f8ba30174d37292fe7652625871e25df34f73a7a4f486fd161e4b14d089bdd1071b51957cedbeca468c902cd753cea8eef042b73c55962e447aadd945a719d9bb2a87fa388f9f7cd8e4e4cf4f3d55773d5b53c599190e92d9e53e95fece227612f3f182c809a51ee6ab9e70c73ddc753944f8e0c6a06ee40dce62680a7ca4a808efd50e3e42b50f569dfd08155b098a55e88b26b04070622c122423fa1e62e6a67ee408b075fe88a847f40cba028a26efa264293d703e2e683bfb662cbcfa8e7393138504463114dea3ef41b9a6782341449265ad012d91a698db415d14e79c74cb0059dc922b6099eb6cf04f771dfa52c266e23c88fd51e26a933ee833884061c461e2b3c07fd4cc6d1ccb5817136a21e4d68450b11adc47410d546725aa8d745ec4ea2bb89eec518a553a42bcf9b15665b200f8a8993d07c329fa17610ed443f8be7c8d861ca0e710d10d58be77184bb42592fa0f82973d70a89a318227bc778ea46f83eda35bc2026350ce35fd49cd4f022fe464c1d09e4fb8eab22ba91d5539f7eeb2ebac9ed8eb820471d919d0f71d4a338529c96688aec2adf2bba7ec7ee84aa417318bf868f86f67586829da17b45ec99190e7c8786419ebb8b78e2e6833f078b78f21663d419c54885c7dd0c01ac7d9839e9cc7a98198f32d309e633c37cd20c577134cc9e18ad70a4e3024f634ce31cf93f4e5c9088ed38c1baa8ceb1cacc8461e225f25b62a607a107741dd430a1e1948697211425f7695a43f33fd88638b542d44ea00e9364bdd4cc5d7ea7f2e647d4dcf27b75ad974f50f3345e296b0efab7d8d8f227ab5a5ee00c927e70672bf3b2a3eca236d2c656bffd909331aee77c8be7ff07504b0304140000000800c09652428402cdc2600100004102000017001c00616e79706b672f426c796168614d7568612e636c617373555409000328cd225128cd225175780b000104e803000004e80300006d50bb4ec340109c4b9c38ef276f41814491a4c005258882082a079082d29f8de5737cd891ed80f257010a240a4a0a3e0ab1761c0529296e67ef6e6676b43fbf9f5f00ce705082829d22b2d855b1a7629fe1c8365eac40b8d2366c23a0eacad0104e206c290c97a1a9736f36716d4df7a59cf56578ce90bf703c27ba64c876ba2306a5ef3f5a0c75ddf1acdbe99361050fdc90f4d2d27d93cb110f9cf89e3e2a91704286f6d2f74aceb8e083a9e0e45c0eade8de09457c184e3a6bc3bb1be2e464dc3354871137dd019fa493caf67fb3766793b634f4a78169dd38b1a0beca723ae6cfbc0215850a72c8d31ed6e23234629226b9676b77c6d832231cd36a155a3519c732eab2d4930bd522dd34424698eb7d80bd5293212288c8126a996a654120ac121651433d155fa7e252ef1b6aef1d19364f54b1438d103448a1510562af9c4a6824419a8b30f1670bedd4f230a100ca1b32f334f7324e8dea561271fb0f504b01021e03140000000800ce9a5242390493e76a050000e0090000150018000000000000000000a48100000000616e79706b672f41747461636b65722e636c6173735554050003d4d3225175780b000104e803000004e8030000504b01021e03140000000800c09652428402cdc26001000041020000170018000000000000000000a481b9050000616e79706b672f426c796168614d7568612e636c617373555405000328cd225175780b000104e803000004e8030000504b05060000000002000200b80000006a0700000000&lt;/span&gt;
+&lt;span class="p"&gt;[&lt;/span&gt;&lt;span class="mh"&gt;0x00000000&lt;/span&gt;&lt;span class="p"&gt;]&lt;/span&gt;&lt;span class="o"&gt;&amp;gt;&lt;/span&gt; &lt;span class="n"&gt;wx&lt;/span&gt; &lt;span class="mi"&gt;504&lt;/span&gt;&lt;span class="n"&gt;b0304140000000800dd7c7f44195f7fd7f2020000ef0400003a001c0072657365617263685f646174612f6578706572696d656e742f6465636f6d70696c65722f64756d7065645f6a61725f6465632f632e636c617373555409000361d2395392c43e5375780b000104e803000004e8030000ad52cd4f135110ff3dbadb6dcb0205f9d002f2a5d8166c0501452ac216488ca02628849664b32c0b2ec2962c8b112f26c69b9ebce195c3269ef8484a2209dcfda35ce76df988c2d1cdbe79f37e33f3667ef3e6d7ef9fc7007a311142b38476091d126e49b82da1338232544610401517351188fc28221a41906b4154cbb88e6b5c34c868419d8c56d4cb68431d43209e9861e88c4fae68efb4f4aa662da7a71ddbb4968712972186faab1cf30a37e4952b23446ea014c18c6999ce30297a8abb3108d9c2a2c15035695ac6f3cdb505c37ea52dac1212992e6cdaba3161f28328dab3d57906b6c0202f1a3ac5289b4b4b864d371996ee5f115a361c65cb313618a21725bc58583174e72fa854155da653c51b9b567acddcd0d3cae8f4f840df987fb77dd9306e9d1ac2b96753fda9fed4e038dd4004584e461c8930042425c465a49026d4a4f5348c6edc95d0cbd07291bec472a260af69cef87bdd5877cc8245de1f186aaeea5d28a3affa5d93f1000f19ca9d42f68d668fdab6b645fd8b27f259fee603fc694badce266638f248c6309e50874ccb316c4a511bbfe271b8e76319f7d1c7298c32544c3b9afe764a5bf71f4202f12ccb676950049a31d00a73bea4c57810ed02181f2d92313a35d3ce6817938790f64861682419f441c90fae3d754d526a8ed61c2138770839b90fa588701115bbffc44528eee679dc171a6c5e4a6a1f5d992304e68e20527c245944f92142fbb8b78ddac66dc82e8493800bf1443840d72ec53451f6387aa8e45674d05e769e434025b2a4a711f4c8542621403c24f48c90963ddd3dcedfb7f852218110facfb83385cae4e57eac6151cf45f8008a0b472d6270ee580d0ca93961075373b1f9be5868fd07f9f5a0f405fcbe01edb4eed0ea8ebe74511bed745115ad76118966884454fff4edf5673035f71da179d5f58ed45c6cc73ba006e4d443648a185167d559d7fb5aea3a67b307d9a3a6339f0a952f9e11f0882ea10146f898c79f8c26c73fd04fd6360e04cf014284ff84f8a9a40b84a0aa8b521ac8dee44fd98d3f504b01021e03140000000800dd7c7f44195f7fd7f2020000ef0400003a0018000000000000000000a4810000000072657365617263685f646174612f6578706572696d656e742f6465636f6d70696c65722f64756d7065645f6a61725f6465632f632e636c617373555405000361d2395375780b000104e803000004e8030000504b0506000000000100010080000000660300000000&lt;/span&gt;
 &lt;span class="p"&gt;[&lt;/span&gt;&lt;span class="mh"&gt;0x00000000&lt;/span&gt;&lt;span class="p"&gt;]&lt;/span&gt;&lt;span class="o"&gt;&amp;gt;&lt;/span&gt; &lt;span class="n"&gt;q&lt;/span&gt;
 &lt;/pre&gt;&lt;/div&gt;
 
@@ -500,4 +848,34 @@ uri     zip://example.zip//sb.class
 
 &lt;h2&gt;6. Conclusions&lt;/h2&gt;
 &lt;p&gt;This concludes the initial post of the radare extensions for Java reverse engineering.  In the next few posts, there will be a more detailed discussion about how to perform in-depth Java reversing and analysis with Radare extensions for Java.&lt;/p&gt;
-&lt;p&gt;greetz: pancake, xvilka, zlul (resident fuzzer), jvoisin, maijin&lt;/p&gt;</summary><category term="radare"></category><category term="hacking"></category><category term="reverse engineering"></category><category term="java"></category><category term="coding"></category><category term="frameworks"></category></entry></feed>
+&lt;p&gt;greetz: pancake, xvilka, zlul (resident fuzzer), jvoisin, maijin&lt;/p&gt;&lt;script type= "text/javascript"&gt;
+    if (!document.getElementById('mathjaxscript_pelican_#%@#$@#')) {
+        var mathjaxscript = document.createElement('script');
+        mathjaxscript.id = 'mathjaxscript_pelican_#%@#$@#';
+        mathjaxscript.type = 'text/javascript';
+        mathjaxscript.src = 'https:' == document.location.protocol
+                ? 'https://c328740.ssl.cf1.rackcdn.com/mathjax/latest/MathJax.js?config=TeX-AMS-MML_HTMLorMML'
+                : 'http://cdn.mathjax.org/mathjax/latest/MathJax.js?config=TeX-AMS-MML_HTMLorMML';
+        mathjaxscript[(window.opera ? "innerHTML" : "text")] =
+            "MathJax.Hub.Config({" +
+            "    config: ['MMLorHTML.js']," +
+            "    TeX: { extensions: ['AMSmath.js','AMSsymbols.js','noErrors.js','noUndefined.js'], equationNumbers: { autoNumber: 'AMS' } }," +
+            "    jax: ['input/TeX','input/MathML','output/HTML-CSS']," +
+            "    extensions: ['tex2jax.js','mml2jax.js','MathMenu.js','MathZoom.js']," +
+            "    displayAlign: 'center'," +
+            "    displayIndent: '0em'," +
+            "    showMathMenu: true," +
+            "    tex2jax: { " +
+            "        inlineMath: [ ['$','$'] ], " +
+            "        displayMath: [ ['$$','$$'] ]," +
+            "        processEscapes: true," +
+            "        preview: 'TeX'," +
+            "    }, " +
+            "    'HTML-CSS': { " +
+            "        styles: { '.MathJax_Display, .MathJax .mo, .MathJax .mi, .MathJax .mn': {color: 'black ! important'} }" +
+            "    } " +
+            "}); ";
+        (document.body || document.getElementsByTagName('head')[0]).appendChild(mathjaxscript);
+    }
+&lt;/script&gt;
+</summary><category term="radare"></category><category term="hacking"></category><category term="reverse engineering"></category><category term="java"></category><category term="coding"></category><category term="frameworks"></category></entry></feed>
