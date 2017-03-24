@@ -77,7 +77,7 @@ by <a class="url fn" href="http://deeso.github.io/author/adam-pridgen.html">Adam
 tags: <a href="http://deeso.github.io/tag/go/">go</a> <a href="http://deeso.github.io/tag/xml/">xml</a> <a href="http://deeso.github.io/tag/parsing/">parsing</a> <a href="http://deeso.github.io/tag/coding/">coding</a> <a href="http://deeso.github.io/tag/frameworks/">frameworks</a> </div>
 		<div><h2>0. Introduction</h2>
 <p>I am trying to write an XML parser for a configuration file format, and one
-of the tricks they use is a ``boolean'' tag.  The boolean tag means a feature is <code>true</code> when it is present, and <code>false</code> when its not there.  </p>
+of the tricks they use is a <em>boolean</em> tag.  The boolean tag means a feature is <code>true</code> when it is present, and <code>false</code> when its not there.  </p>
 <p>The problem is that we want to capture when the tag is present and when it is missing.  Also, if the tag is not present in the original file, we do not want to include it with the serialized output.  This <a href="http://stackoverflow.com/questions/27246275/golang-hide-xml-parent-tag-if-empty">StackOverflow</a> post has a basic solution, but I refined the recipe a little.</p>
 <h2>1. Approach</h2>
 <p>Based on what the post states.  If a pointer to the value is used, <code>xml.Marshal</code> will create the struct when the tag is present, and if the tag is missing, the <code>struct</code> is <code>nil</code>.</p>
