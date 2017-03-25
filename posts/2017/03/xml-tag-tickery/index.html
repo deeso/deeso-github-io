@@ -152,7 +152,7 @@ of the tricks they use is a <em>boolean</em> tag.  The boolean tag means a featu
   <span class="k">if</span> <span class="n">err</span> <span class="p">:</span><span class="o">=</span> <span class="n">enc</span><span class="o">.</span><span class="n">Encode</span><span class="p">(</span><span class="n">t1</span><span class="p">);</span> <span class="n">err</span> <span class="o">!=</span> <span class="n">nil</span> <span class="p">{</span>
     <span class="n">fmt</span><span class="o">.</span><span class="n">Printf</span><span class="p">(</span><span class="s2">&quot;error: %v</span><span class="se">\n</span><span class="s2">&quot;</span><span class="p">,</span> <span class="n">err</span><span class="p">)</span>
   <span class="p">}</span> <span class="k">else</span> <span class="p">{</span>
-    <span class="n">fmt</span><span class="o">.</span><span class="n">Printf</span><span class="p">(</span><span class="s2">&quot;Test1&#39;s XML:</span><span class="se">\n</span><span class="s2">&quot;</span><span class="p">)</span>
+    <span class="n">fmt</span><span class="o">.</span><span class="n">Printf</span><span class="p">(</span><span class="s2">&quot;Test1&#39;s (enable tag present) Elements struct with pointer XML:</span><span class="se">\n</span><span class="s2">&quot;</span><span class="p">)</span>
     <span class="n">fmt</span><span class="o">.</span><span class="n">Printf</span><span class="p">(</span><span class="n">b1</span><span class="o">.</span><span class="n">String</span><span class="p">()</span> <span class="o">+</span> <span class="s2">&quot;</span><span class="se">\n</span><span class="s2">&quot;</span><span class="p">)</span>
   <span class="p">}</span>
   <span class="n">b1</span> <span class="o">=</span> <span class="nb">bytes</span><span class="o">.</span><span class="n">Buffer</span><span class="p">{}</span>
@@ -163,7 +163,7 @@ of the tricks they use is a <em>boolean</em> tag.  The boolean tag means a featu
   <span class="k">if</span> <span class="n">err</span> <span class="p">:</span><span class="o">=</span> <span class="n">enc</span><span class="o">.</span><span class="n">Encode</span><span class="p">(</span><span class="n">t2</span><span class="p">);</span> <span class="n">err</span> <span class="o">!=</span> <span class="n">nil</span> <span class="p">{</span>
     <span class="n">fmt</span><span class="o">.</span><span class="n">Printf</span><span class="p">(</span><span class="s2">&quot;error: %v</span><span class="se">\n</span><span class="s2">&quot;</span><span class="p">,</span> <span class="n">err</span><span class="p">)</span>
   <span class="p">}</span> <span class="k">else</span> <span class="p">{</span>
-    <span class="n">fmt</span><span class="o">.</span><span class="n">Printf</span><span class="p">(</span><span class="s2">&quot;Test2&#39;s XML:</span><span class="se">\n</span><span class="s2">&quot;</span><span class="p">)</span>
+    <span class="n">fmt</span><span class="o">.</span><span class="n">Printf</span><span class="p">(</span><span class="s2">&quot;Test2&#39;s (without enable tag present) Elements struct with pointer  struct XML:</span><span class="se">\n</span><span class="s2">&quot;</span><span class="p">)</span>
     <span class="n">fmt</span><span class="o">.</span><span class="n">Printf</span><span class="p">(</span><span class="n">b1</span><span class="o">.</span><span class="n">String</span><span class="p">()</span> <span class="o">+</span> <span class="s2">&quot;</span><span class="se">\n</span><span class="s2">&quot;</span><span class="p">)</span>
   <span class="p">}</span>
 
@@ -175,7 +175,7 @@ of the tricks they use is a <em>boolean</em> tag.  The boolean tag means a featu
   <span class="k">if</span> <span class="n">err</span> <span class="p">:</span><span class="o">=</span> <span class="n">enc</span><span class="o">.</span><span class="n">Encode</span><span class="p">(</span><span class="n">t3</span><span class="p">);</span> <span class="n">err</span> <span class="o">!=</span> <span class="n">nil</span> <span class="p">{</span>
     <span class="n">fmt</span><span class="o">.</span><span class="n">Printf</span><span class="p">(</span><span class="s2">&quot;error: %v</span><span class="se">\n</span><span class="s2">&quot;</span><span class="p">,</span> <span class="n">err</span><span class="p">)</span>
   <span class="p">}</span> <span class="k">else</span> <span class="p">{</span>
-    <span class="n">fmt</span><span class="o">.</span><span class="n">Printf</span><span class="p">(</span><span class="s2">&quot;Test3&#39;s XML:</span><span class="se">\n</span><span class="s2">&quot;</span><span class="p">)</span>
+    <span class="n">fmt</span><span class="o">.</span><span class="n">Printf</span><span class="p">(</span><span class="s2">&quot;Test3&#39;s (without enable tag present) ElementsNoTricks (no omitting empty tags) struct XML:</span><span class="se">\n</span><span class="s2">&quot;</span><span class="p">)</span>
     <span class="n">fmt</span><span class="o">.</span><span class="n">Printf</span><span class="p">(</span><span class="n">b1</span><span class="o">.</span><span class="n">String</span><span class="p">()</span> <span class="o">+</span> <span class="s2">&quot;</span><span class="se">\n</span><span class="s2">&quot;</span><span class="p">)</span>
   <span class="p">}</span>
 
@@ -187,7 +187,7 @@ of the tricks they use is a <em>boolean</em> tag.  The boolean tag means a featu
   <span class="k">if</span> <span class="n">err</span> <span class="p">:</span><span class="o">=</span> <span class="n">enc</span><span class="o">.</span><span class="n">Encode</span><span class="p">(</span><span class="n">t4</span><span class="p">);</span> <span class="n">err</span> <span class="o">!=</span> <span class="n">nil</span> <span class="p">{</span>
     <span class="n">fmt</span><span class="o">.</span><span class="n">Printf</span><span class="p">(</span><span class="s2">&quot;error: %v</span><span class="se">\n</span><span class="s2">&quot;</span><span class="p">,</span> <span class="n">err</span><span class="p">)</span>
   <span class="p">}</span> <span class="k">else</span> <span class="p">{</span>
-    <span class="n">fmt</span><span class="o">.</span><span class="n">Printf</span><span class="p">(</span><span class="s2">&quot;Test4&#39;s XML:</span><span class="se">\n</span><span class="s2">&quot;</span><span class="p">)</span>
+    <span class="n">fmt</span><span class="o">.</span><span class="n">Printf</span><span class="p">(</span><span class="s2">&quot;Test4&#39;s (with enable tag present) ElementsNoTricksEmpty (omitting empty tags) struct XML:</span><span class="se">\n</span><span class="s2">&quot;</span><span class="p">)</span>
     <span class="n">fmt</span><span class="o">.</span><span class="n">Printf</span><span class="p">(</span><span class="n">b1</span><span class="o">.</span><span class="n">String</span><span class="p">()</span> <span class="o">+</span> <span class="s2">&quot;</span><span class="se">\n</span><span class="s2">&quot;</span><span class="p">)</span>
   <span class="p">}</span>
 
@@ -200,17 +200,17 @@ of the tricks they use is a <em>boolean</em> tag.  The boolean tag means a featu
 
 
 <h3>Output</h3>
-<div class="highlight"><pre><span></span>Test1&#39;s XML:
+<div class="highlight"><pre><span></span>Test1&#39;s (enable tag present) Elements struct with pointer XML:
   <span class="nt">&lt;elements&gt;</span>
       <span class="nt">&lt;enable&gt;&lt;/enable&gt;</span>
   <span class="nt">&lt;/elements&gt;</span>
-Test2&#39;s XML:
+Test2&#39;s (without enable tag present) Elements struct with pointer  struct XML:
   <span class="nt">&lt;elements&gt;&lt;/elements&gt;</span>
-Test3&#39;s XML:
+Test3&#39;s (without enable tag present) ElementsNoTricks (no omitting empty tags) struct XML:
   <span class="nt">&lt;elements&gt;</span>
       <span class="nt">&lt;enable&gt;&lt;/enable&gt;</span>
   <span class="nt">&lt;/elements&gt;</span>
-Test4&#39;s XML:
+Test4&#39;s (with enable tag present) ElementsNoTricksEmpty (omitting empty tags) struct XML:
   <span class="nt">&lt;elements&gt;&lt;/elements&gt;</span>
 </pre></div></div>
                     &larr;<a href="http://deeso.github.io/posts/2014/04/radare-java-artifact-enumeration/">
